@@ -1,0 +1,60 @@
+# Specialized preliminary signal-correlation study config.
+# The recommended global config is configs/default.yaml.
+# Run this file explicitly with:
+#   python scripts/run_preliminary_study.py --config configs/preliminary.yaml
+
+run_name: prelim_aime24
+
+benchmark: aime2024
+limit: 60   # cap to ~60 questions for speed; ~3-5h on a single GPU
+max_steps: 32
+step_delimiters: ["\n\n"]
+
+# Offline local dataset files. Paths are resolved from the directory where you
+# launch the script, so run from the project root or use absolute server paths.
+dataset_paths:
+  aime2024: data/aime24.jsonl
+  aime2025: data/aime25.parquet
+  math500: data/math500.jsonl
+  gpqa_diamond: data/gpqa_diamond.jsonl
+  livecodebench_lite: data/livecodebench_lite.jsonl
+
+small_model:
+  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  n_params_billion: 1.5
+  gpu_memory_utilization: 0.45
+  dtype: bfloat16
+  max_model_len: 32768
+  enable_prefix_caching: true
+  offline: true
+  require_local_model: true
+
+large_model:
+  # NOTE: for preliminary study, large model is not actually queried under
+  # outcome-propagation strategy (C). Keep this small to save GPU.
+  # If you switch to strategy (B) [agreement], make this the real large model.
+  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  n_params_billion: 1.5
+  gpu_memory_utilization: 0.45
+  dtype: bfloat16
+  max_model_len: 32768
+  enable_prefix_caching: true
+  offline: true
+  require_local_model: true
+
+signals:
+  - h_init
+  - logit_confidence
+  - self_consistency
+
+signal_kwargs:
+  h_init: {}
+  logit_confidence:
+    mode: max_prob
+  self_consistency:
+    n_samples: 4
+    prefix_tokens: 12
+    temperature: 0.7
+    agreement_metric: first_token_agreement

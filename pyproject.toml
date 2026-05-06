@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conformal_routing"
+version = "0.1.0"
+description = "Conformal stepwise routing between small and large LLMs"
+requires-python = ">=3.10"
+dependencies = [
+    # Core
+    "torch>=2.1",
+    "transformers>=4.40",
+    "vllm>=0.6.0",          # for fast batched inference
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",    # GMM, isotonic regression, KMeans
+    # Conformal
+    "mapie>=0.8",           # split conformal predictors (or implement from scratch)
+    # Data / utils
+    "datasets>=2.14",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.66",
+    "rich>=13.0",
+    # Eval
+    "math-verify>=0.5",     # for math answer checking
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

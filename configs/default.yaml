@@ -1,0 +1,121 @@
+# Global offline experiment config.
+#
+# This file is the recommended single entry point, modeled after
+# GlimpRouter-main/configs/bpa_default.json. Edit local model/data paths here,
+# then all scripts can run without passing a config path.
+
+run_name: conformal_aime
+
+# Runtime defaults. The code currently uses in-process vLLM for both models.
+runtime:
+  model_backend: vllm
+  offline: true
+
+output_dirs:
+  preliminary: outputs/preliminary
+  calibrators: outputs/calibrators
+  inference: outputs/inference
+
+benchmark: aime2024
+limit: null
+max_steps: 32
+step_delimiters: ["\n\n"]
+calibration_strategy: outcome_propagation  # or: agreement
+
+dataset_paths:
+  aime2024: data/aime24.jsonl
+  aime2025: data/aime25.parquet
+  math500: data/math500.jsonl
+  gpqa_diamond: data/gpqa_diamond.jsonl
+  livecodebench_lite: data/livecodebench_lite.jsonl
+
+# These defaults are merged into both small_model and large_model before
+# constructing VLLMWrapper. Model-specific fields below override them.
+vllm_defaults:
+  dtype: bfloat16
+  max_model_len: 32768
+  tensor_parallel_size: 1
+  enable_prefix_caching: true
+  seed: 42
+  probe_logprobs: 200
+  trust_remote_code: true
+  offline: true
+  require_local_model: true
+  use_chat_template: true
+  assistant_prefix_start: "<think>"
+  continue_final_message: true
+  add_generation_prompt: true
+
+small_model:
+  backend: vllm
+  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  n_params_billion: 1.5
+  gpu_memory_utilization: 0.30
+
+large_model:
+  backend: vllm
+  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-32B
+  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-32B
+  n_params_billion: 32.0
+  gpu_memory_utilization: 0.55
+  tensor_parallel_size: 2
+
+# Preliminary study evaluates all of these.
+signals:
+  - h_init
+  - logit_confidence
+  - self_consistency
+
+signal_kwargs:
+  h_init: {}
+  logit_confidence:
+    mode: max_prob
+  self_consistency:
+    n_samples: 4
+    prefix_tokens: 12
+    temperature: 0.7
+    agreement_metric: first_token_agreement
+
+# Calibration/inference use this selected signal.
+signal:
+  name: logit_confidence
+  kwargs:
+    mode: max_prob
+
+calibrators:
+  - name: gmm
+    id: gmm_k2
+    kwargs:
+      n_components: 2
+      threshold: 0.5
+      weight_by_correctness: true
+
+  - name: conformal
+    id: conformal_alpha005
+    kwargs: {alpha: 0.05}
+  - name: conformal
+    id: conformal_alpha010
+    kwargs: {alpha: 0.10}
+  - name: conformal
+    id: conformal_alpha020
+    kwargs: {alpha: 0.20}
+  - name: conformal
+    id: conformal_alpha030
+    kwargs: {alpha: 0.30}
+
+  - name: qcond
+    id: qcond_conformal_a010
+    kwargs:
+      n_clusters: 8
+      min_per_cluster: 30
+    base:
+      name: conformal
+      kwargs: {alpha: 0.10}
+
+pipeline:
+  max_steps: 32
+  max_tokens_per_step: 1024
+  temperature_small: 0.0
+  temperature_large: 0.0
+  reuse_probe_first_token: true

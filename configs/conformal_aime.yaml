@@ -1,0 +1,91 @@
+# Specialized AIME experiment config. The recommended global config is
+# configs/default.yaml.
+# Run this file explicitly with:
+#   python scripts/run_calibration.py --config configs/conformal_aime.yaml
+#   python scripts/run_inference.py   --config configs/conformal_aime.yaml \
+#       --calibrator outputs/calibrators/conformal_aime_alpha010.pkl
+
+run_name: conformal_aime
+
+benchmark: aime2024
+limit: null
+max_steps: 32
+step_delimiters: ["\n\n"]
+
+# Offline local dataset files. Paths are resolved from the directory where you
+# launch the script, so run from the project root or use absolute server paths.
+dataset_paths:
+  aime2024: data/aime24.jsonl
+  aime2025: data/aime25.parquet
+  math500: data/math500.jsonl
+  gpqa_diamond: data/gpqa_diamond.jsonl
+  livecodebench_lite: data/livecodebench_lite.jsonl
+
+small_model:
+  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  n_params_billion: 1.5
+  gpu_memory_utilization: 0.30
+  dtype: bfloat16
+  max_model_len: 32768
+  enable_prefix_caching: true
+  offline: true
+  require_local_model: true
+
+large_model:
+  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-32B
+  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-32B
+  n_params_billion: 32.0
+  gpu_memory_utilization: 0.55
+  dtype: bfloat16
+  max_model_len: 32768
+  tensor_parallel_size: 2
+  enable_prefix_caching: true
+  offline: true
+  require_local_model: true
+
+# Signal selected based on preliminary study results.
+signal:
+  name: logit_confidence    # change to self_consistency if prelim says so
+  kwargs:
+    mode: max_prob
+
+calibrators:
+  # Baseline (STEER reproduction).
+  - name: gmm
+    id: gmm_k2
+    kwargs:
+      n_components: 2
+      threshold: 0.5
+      weight_by_correctness: true
+
+  # Ours (Route 1) — sweep alpha for Pareto curve.
+  - name: conformal
+    id: conformal_alpha005
+    kwargs: {alpha: 0.05}
+  - name: conformal
+    id: conformal_alpha010
+    kwargs: {alpha: 0.10}
+  - name: conformal
+    id: conformal_alpha020
+    kwargs: {alpha: 0.20}
+  - name: conformal
+    id: conformal_alpha030
+    kwargs: {alpha: 0.30}
+
+  # Ours (Route 2 backup) — Conformal inside per-cluster.
+  - name: qcond
+    id: qcond_conformal_a010
+    kwargs:
+      n_clusters: 8
+      min_per_cluster: 30
+    base:
+      name: conformal
+      kwargs: {alpha: 0.10}
+
+pipeline:
+  max_steps: 32
+  max_tokens_per_step: 1024
+  temperature_small: 0.0
+  temperature_large: 0.0
+  reuse_probe_first_token: true
