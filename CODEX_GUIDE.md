@@ -22,7 +22,7 @@ offline server execution with local model and dataset paths.
 | `calibration/conformal.py` | complete | Split conformal calibrator. |
 | `calibration/question_conditional.py` | complete | Cluster-conditioned conformal wrapper. |
 | `calibration/collect.py` | complete | Strategy C and strategy B agreement collection implemented. |
-| `routing/pipeline.py` | complete | Synchronous stepwise routing pipeline. |
+| `routing/pipeline.py` | complete | Synchronous stepwise routing pipeline with GlimpRouter-style repetition stop. |
 | `data/loaders.py` | complete | Local/offline dataset loading only. |
 | `eval/metrics.py` | complete | Aggregation utilities. |
 | `eval/answer_check.py` | complete | Math, AIME integer, and GPQA choice checks. |
@@ -91,6 +91,15 @@ Done in `src/conformal_routing/data/loaders.py`.
   - HuggingFace `Dataset.save_to_disk` directories
 - Configs use `dataset_paths` to point to local files.
 - GPQA multiple-choice prompts are built deterministically with a seeded RNG.
+- Math-style problem recognition follows GlimpRouter BPA first
+  (`problem -> question -> prompt`), then accepts common variants such as
+  `input`, `query`, `problem_statement`, and `problem_text`.
+- Math loaders also inspect nested `raw`, `example`, `data`, `record`, and
+  `row` objects, and support JSON maps shaped as `{question_id: {...}}`.
+- Missing math problem text now raises a hard `ValueError` instead of producing
+  `Problem: None`.
+- Preliminary debug rows include `question_preview`, `question_meta.raw_keys`,
+  and `question_meta.problem_field` for dataset diagnostics.
 
 ### Task 3: optimize self-consistency
 
@@ -119,6 +128,23 @@ The default remains:
 
 ```yaml
 calibration_strategy: outcome_propagation
+```
+
+### Runtime repetition stop
+
+Done in `src/conformal_routing/routing/safety.py` and wired into calibration and
+inference loops.
+
+- Stops when the latest generated step exactly repeats the previous step
+  (`duplicate_step`).
+- Also stops an exact A/B/A alternating loop (`alternating_step`), matching the
+  strict guard used in `GlimpRouter-main/bpa/safety.py`.
+- Controlled by:
+
+```yaml
+pipeline:
+  stop_on_repetition: true
+  repetition_min_chars: 10
 ```
 
 ## Offline Server Checklist
@@ -192,7 +218,7 @@ Expected Linux CPU verification:
 ```text
 python -m compileall src scripts tests
 PYTHONPATH=src pytest tests/
-19 passed
+25 passed
 ```
 
 Also checked with ripgrep: no remote dataset/model identifiers or remote

@@ -90,3 +90,5 @@ pipeline:
   temperature_small: 0.0
   temperature_large: 0.0
   reuse_probe_first_token: true
+  stop_on_repetition: true
+  repetition_min_chars: 10

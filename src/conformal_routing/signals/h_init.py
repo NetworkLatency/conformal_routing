@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.conformal_routing.signals.base import SignalContext, SignalExtractor
+from conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 class HInitSignal(SignalExtractor):
@@ -47,6 +47,7 @@ class HInitSignal(SignalExtractor):
 
     @staticmethod
     def _build_prompt(ctx: SignalContext) -> str:
-        # The probe input is question + history with no extra step delimiter at end —
+        # The probe input is question + history with no extra step delimiter at end -
         # the small model is about to emit the first token of step (step_idx).
         return ctx.small_model.render_prompt(ctx.question, ctx.history)
+

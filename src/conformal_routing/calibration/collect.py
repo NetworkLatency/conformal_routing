@@ -4,7 +4,7 @@ Goal: produce a labeled dataset for fitting calibrators:
     { (question_id, step_idx, score, small_correct, embed) }
 
 This requires a "ground truth" oracle for `small_correct` per step. There is no
-universal one for stepwise routing — the field uses several proxies:
+universal one for stepwise routing  - the field uses several proxies:
 
   (A) ROLLOUT-BASED (recommended): for each candidate step from the small model,
       complete the rest of the trajectory K times with the LARGE model, check
@@ -35,8 +35,8 @@ from typing import Callable, Iterable
 import numpy as np
 from tqdm import tqdm
 
-from src.conformal_routing.calibration.base import FitInputs
-from src.conformal_routing.eval.answer_check import (
+from conformal_routing.calibration.base import FitInputs
+from conformal_routing.eval.answer_check import (
     check_answer,
     clean_latex_answer,
     extract_answer,
@@ -44,8 +44,9 @@ from src.conformal_routing.eval.answer_check import (
     extract_choice_answer,
     extract_final_number,
 )
-from src.conformal_routing.models.base import ModelWrapper
-from src.conformal_routing.signals.base import SignalContext, SignalExtractor
+from conformal_routing.models.base import ModelWrapper
+from conformal_routing.routing.safety import RepetitionState, update_strict_step_repetition
+from conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 @dataclass
@@ -67,6 +68,8 @@ def collect_with_outcome_propagation(
     step_delimiters: tuple[str, ...] = ("\n\n",),
     embed_fn: Callable[[str], np.ndarray] | None = None,
     debug_path: str | Path | None = None,
+    stop_on_repetition: bool = True,
+    repetition_min_chars: int = 10,
 ) -> list[CalibrationExample]:
     """Strategy (C): outcome propagation.
 
@@ -82,6 +85,8 @@ def collect_with_outcome_propagation(
         history = ""
         per_step = []
         last_step_extra = {}
+        stop_reason = None
+        repetition = RepetitionState()
         for step_idx in range(max_steps):
             prompt = small_model.render_prompt(q["question"], history)
             probe = small_model.probe_first_token(prompt)
@@ -99,9 +104,20 @@ def collect_with_outcome_propagation(
                 step_delimiters=step_delimiters,
             )
             per_step.append((step_idx, score))
-            history += step_out.text + (step_delimiters[0] if not step_out.finished else "")
+            committed_text = step_out.text + (step_delimiters[0] if not step_out.finished else "")
+            history += committed_text
             last_step_extra = dict(step_out.extra)
+            if stop_on_repetition:
+                stop_reason = update_strict_step_repetition(
+                    repetition,
+                    committed_text,
+                    min_chars=repetition_min_chars,
+                )
+                if stop_reason is not None:
+                    last_step_extra["stop_reason"] = stop_reason
+                    break
             if step_out.finished:
+                stop_reason = str(step_out.extra.get("finish_reason") or "finished")
                 break
 
         small_correct = int(answer_checker(history, q["answer"]))
@@ -110,11 +126,14 @@ def collect_with_outcome_propagation(
             debug_rows.append(
                 {
                     "question_id": q["id"],
+                    "question_preview": _question_preview(q),
+                    "question_meta": dict(q.get("meta", {})),
                     "n_steps": len(per_step),
                     "small_correct": small_correct,
                     "gold": q["answer"],
                     "small_extracted": extract_answer(history),
                     "small_tail": history[-1000:],
+                    "stop_reason": stop_reason,
                     "last_step_extra": last_step_extra,
                 }
             )
@@ -142,6 +161,8 @@ def collect_with_agreement(
     step_delimiters: tuple[str, ...] = ("\n\n",),
     embed_fn: Callable[[str], np.ndarray] | None = None,
     debug_path: str | Path | None = None,
+    stop_on_repetition: bool = True,
+    repetition_min_chars: int = 10,
 ) -> list[CalibrationExample]:
     """Strategy (B): label step as correct if small and large agree on FINAL answer
     when each runs solo from the same question.
@@ -157,6 +178,8 @@ def collect_with_agreement(
         history = ""
         per_step = []
         last_step_extra = {}
+        stop_reason = None
+        repetition = RepetitionState()
         for step_idx in range(max_steps):
             prompt = small_model.render_prompt(q["question"], history)
             probe = small_model.probe_first_token(prompt)
@@ -174,9 +197,20 @@ def collect_with_agreement(
                 step_delimiters=step_delimiters,
             )
             per_step.append((step_idx, score))
-            history += step_out.text + (step_delimiters[0] if not step_out.finished else "")
+            committed_text = step_out.text + (step_delimiters[0] if not step_out.finished else "")
+            history += committed_text
             last_step_extra = dict(step_out.extra)
+            if stop_on_repetition:
+                stop_reason = update_strict_step_repetition(
+                    repetition,
+                    committed_text,
+                    min_chars=repetition_min_chars,
+                )
+                if stop_reason is not None:
+                    last_step_extra["stop_reason"] = stop_reason
+                    break
             if step_out.finished:
+                stop_reason = str(step_out.extra.get("finish_reason") or "finished")
                 break
 
         large_out = large_model.generate_full(large_model.render_prompt(q["question"], ""))
@@ -187,6 +221,8 @@ def collect_with_agreement(
             debug_rows.append(
                 {
                     "question_id": q["id"],
+                    "question_preview": _question_preview(q),
+                    "question_meta": dict(q.get("meta", {})),
                     "n_steps": len(per_step),
                     "small_correct": small_correct,
                     "large_reference": large_reference,
@@ -194,6 +230,7 @@ def collect_with_agreement(
                     "large_extracted": extract_answer(large_out.text),
                     "small_tail": history[-1000:],
                     "large_tail": large_out.text[-1000:],
+                    "stop_reason": stop_reason,
                     "last_step_extra": last_step_extra,
                     "large_extra": dict(large_out.extra),
                 }
@@ -231,6 +268,10 @@ def _extract_reference_answer(text: str) -> str:
     )
 
 
+def _question_preview(q: dict, max_chars: int = 800) -> str:
+    return str(q.get("question", ""))[:max_chars]
+
+
 def _write_debug_rows(debug_path: str | Path | None, rows: list[dict]) -> None:
     if debug_path is None:
         return
@@ -256,3 +297,4 @@ def to_fit_inputs(examples: Iterable[CalibrationExample]) -> FitInputs:
         question_embeds=embeds,
         question_ids=qids,
     )
+

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.conformal_routing.models.base import ModelWrapper
-from src.conformal_routing.models.openai_compatible import OpenAICompatibleWrapper
-from src.conformal_routing.models.vllm_wrapper import VLLMWrapper
+from conformal_routing.models.base import ModelWrapper
+from conformal_routing.models.openai_compatible import OpenAICompatibleWrapper
+from conformal_routing.models.vllm_wrapper import VLLMWrapper
 
 
 def build_model(cfg: dict[str, Any]) -> ModelWrapper:
@@ -20,3 +20,4 @@ def build_model(cfg: dict[str, Any]) -> ModelWrapper:
     if backend == "vllm":
         return VLLMWrapper(**wrapper_cfg)
     raise ValueError(f"Unknown model backend {backend!r}")
+

@@ -16,11 +16,11 @@ from typing import Any, Optional
 
 import numpy as np
 
-from src.conformal_routing.models.render import (
+from conformal_routing.models.render import (
     apply_chat_template_override,
     render_for_continuation,
 )
-from src.conformal_routing.models.base import (
+from conformal_routing.models.base import (
     FirstTokenProbe,
     ModelWrapper,
     StepOutput,
@@ -393,3 +393,4 @@ class VLLMWrapper(ModelWrapper):
                 return False
             return True
         return False
+

@@ -1,11 +1,11 @@
-"""Conformal calibrator — proposed method (Route 1).
+"""Conformal calibrator  - proposed method (Route 1).
 
 Background
 ----------
 Split Conformal Prediction (Vovk et al. 2005; Angelopoulos & Bates 2023) gives
 finite-sample coverage guarantees without distributional assumptions.
 
-Adaptation to stepwise routing — clean one-sided formulation
+Adaptation to stepwise routing  - clean one-sided formulation
 ------------------------------------------------------------
 We route SMALL when we are confident the small model is correct. Frame it as:
 
@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
 
 
 class ConformalCalibrator(Calibrator):
@@ -122,3 +122,4 @@ class ConformalCalibrator(Calibrator):
             cal.fit(data)
             out[a] = cal
         return out
+

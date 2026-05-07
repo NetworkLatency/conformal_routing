@@ -1,4 +1,4 @@
-from src.conformal_routing.routing.pipeline import (
+from conformal_routing.routing.pipeline import (
     PipelineConfig,
     RoutingPipeline,
     RoutingTrace,
@@ -6,3 +6,4 @@ from src.conformal_routing.routing.pipeline import (
 )
 
 __all__ = ["PipelineConfig", "RoutingPipeline", "RoutingTrace", "StepRecord"]
+

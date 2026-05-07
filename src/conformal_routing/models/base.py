@@ -1,8 +1,8 @@
 """Model wrapper interfaces.
 
 A wrapper exposes two key capabilities required by the routing pipeline:
-  1. `generate_step(context, ...)` — generate one reasoning step (until step delimiter)
-  2. `score_first_token(context)` — return logits/probs for the FIRST token of a step
+  1. `generate_step(context, ...)` - generate one reasoning step (until step delimiter)
+  2. `score_first_token(context)` - return logits/probs for the FIRST token of a step
                                     without consuming generation budget for the rest
 
 Both small and large models implement the same interface so the pipeline is symmetric.
@@ -66,9 +66,9 @@ class ModelWrapper(ABC):
     def probe_first_token(self, context: str) -> FirstTokenProbe:
         """Run a single forward pass on `context` and return logits over the next token.
 
-        This must NOT continue generation — it is a cheap probe used by routing signals.
+        This must NOT continue generation - it is a cheap probe used by routing signals.
         Implementations should leverage prefix caching so repeated probing on extending
-        contexts is cheap (cf. GlimpRouter §3.5).
+        contexts is cheap (cf. GlimpRouter -3.5).
         """
         ...
 

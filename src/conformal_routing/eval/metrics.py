@@ -13,7 +13,7 @@ Aggregate:
 
 For coverage diagnosis (Conformal-specific):
   - Realized small-error rate: (# steps routed to small AND small wrong) / (# steps routed to small)
-    Should be ≤ alpha by the conformal guarantee (under exchangeability).
+    Should be -alpha by the conformal guarantee (under exchangeability).
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.conformal_routing.routing.pipeline import RoutingTrace
+from conformal_routing.routing.pipeline import RoutingTrace
 
 
 @dataclass
@@ -64,7 +64,7 @@ def realized_small_error_rate(
     Limitation: we don't have step-level oracle labels at test time. This function
     therefore estimates a *question-level* proxy:
       Among questions whose every step was routed to small, what fraction are wrong?
-    True step-level realized error needs an oracle (rollout) — see analysis script.
+    True step-level realized error needs an oracle (rollout)  - see analysis script.
     """
     small_only = [t for t, c in zip(traces, correctness) if t.intervention_rate == 0.0]
     if not small_only:
@@ -87,3 +87,4 @@ def pareto_frontier(points: list[tuple[float, float]]) -> list[tuple[float, floa
             frontier.append((cost, acc))
             best_acc = acc
     return frontier
+

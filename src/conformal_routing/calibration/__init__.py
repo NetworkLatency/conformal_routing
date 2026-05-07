@@ -1,8 +1,8 @@
 """Calibration subpackage."""
-from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
-from src.conformal_routing.calibration.conformal import ConformalCalibrator
-from src.conformal_routing.calibration.gmm import GMMCalibrator
-from src.conformal_routing.calibration.question_conditional import QuestionConditionalCalibrator
+from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from conformal_routing.calibration.conformal import ConformalCalibrator
+from conformal_routing.calibration.gmm import GMMCalibrator
+from conformal_routing.calibration.question_conditional import QuestionConditionalCalibrator
 
 CALIBRATOR_REGISTRY: dict[str, type[Calibrator]] = {
     "gmm": GMMCalibrator,
@@ -36,3 +36,4 @@ def __getattr__(name):
         from conformal_routing.calibration import collect as _collect
         return getattr(_collect, name)
     raise AttributeError(name)
+

@@ -30,14 +30,14 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
-from src.conformal_routing.calibration.collect import (
+from conformal_routing.calibration.collect import (
     collect_with_agreement,
     collect_with_outcome_propagation,
 )
-from src.conformal_routing.config_paths import configured_output_dir, load_experiment_config
-from src.conformal_routing.data.loaders import load_split
-from src.conformal_routing.models import build_model
-from src.conformal_routing.signals import build_signal
+from conformal_routing.config_paths import configured_output_dir, load_experiment_config
+from conformal_routing.data.loaders import load_split
+from conformal_routing.models import build_model
+from conformal_routing.signals import build_signal
 
 
 def _json_metric(value: float) -> float | None:
@@ -73,12 +73,13 @@ def main():
     print(f"[preliminary] loaded {len(questions)} questions from {cfg['benchmark']}")
 
     # --- answer checker (math-verify or simple regex; user fills) ---
-    from src.conformal_routing.eval.answer_check import check_answer  # see file
+    from conformal_routing.eval.answer_check import check_answer  # see file
     answer_checker = check_answer
 
     # --- iterate over signals ---
     signal_names = cfg["signals"]  # e.g. ["h_init", "logit_confidence", "self_consistency"]
     strategy = cfg.get("calibration_strategy", "outcome_propagation")
+    pipeline_cfg = cfg.get("pipeline", {})
     results = {}
 
     for sname in signal_names:
@@ -93,6 +94,8 @@ def main():
                 max_steps=cfg.get("max_steps", 32),
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
                 debug_path=out_dir / f"debug_{sname}.jsonl",
+                stop_on_repetition=pipeline_cfg.get("stop_on_repetition", True),
+                repetition_min_chars=pipeline_cfg.get("repetition_min_chars", 10),
             )
         elif strategy == "outcome_propagation":
             examples = collect_with_outcome_propagation(
@@ -104,6 +107,8 @@ def main():
                 max_steps=cfg.get("max_steps", 32),
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
                 debug_path=out_dir / f"debug_{sname}.jsonl",
+                stop_on_repetition=pipeline_cfg.get("stop_on_repetition", True),
+                repetition_min_chars=pipeline_cfg.get("repetition_min_chars", 10),
             )
         else:
             raise ValueError(
@@ -163,3 +168,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

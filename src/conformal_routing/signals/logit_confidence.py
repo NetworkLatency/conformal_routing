@@ -1,4 +1,4 @@
-"""Logit-based confidence signal — STEER's signal (arXiv 2511.06190).
+"""Logit-based confidence signal  - STEER's signal (arXiv 2511.06190).
 
 STEER uses the smaller model's logits BEFORE generating a step. The exact form
 in the paper is the max softmax probability over the next-token distribution
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.conformal_routing.signals.base import SignalContext, SignalExtractor
+from conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 class LogitConfidenceSignal(SignalExtractor):
@@ -43,3 +43,4 @@ class LogitConfidenceSignal(SignalExtractor):
         # neg_entropy
         nz = probs[probs > 0]
         return float(np.sum(nz * np.log(nz)))  # = -H, higher = more confident
+

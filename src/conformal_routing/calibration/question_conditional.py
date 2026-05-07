@@ -1,11 +1,11 @@
-"""Question-conditional calibrator (Route 2 — backup).
+"""Question-conditional calibrator (Route 2  - backup).
 
 Idea: STEER fits ONE GMM globally. Difficulty distributions differ across question
 types (math vs code vs multi-hop QA). We cluster questions in embedding space,
 then fit a per-cluster calibrator (we delegate to ANY base calibrator: GMM or
-Conformal — this composes nicely).
+Conformal  - this composes nicely).
 
-This file is intentionally short — it's a wrapper that holds K base calibrators.
+This file is intentionally short  - it's a wrapper that holds K base calibrators.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.cluster import KMeans
 
-from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
 
 
 class QuestionConditionalCalibrator(Calibrator):
@@ -96,3 +96,4 @@ class QuestionConditionalCalibrator(Calibrator):
         cal = self.calibrators_.get(c, self.fallback_) if c is not None else self.fallback_
         assert cal is not None
         return cal.confidence(score, question_embed)
+

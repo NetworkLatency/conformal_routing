@@ -86,6 +86,8 @@ def main():
                         "score": s.score,
                         "decision": s.decision,
                         "n_tokens": s.n_tokens,
+                        "finished": s.finished,
+                        "stop_reason": s.stop_reason,
                     }
                     for s in trace.steps
                 ],

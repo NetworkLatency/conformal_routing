@@ -1,4 +1,4 @@
-"""GMM calibrator — reproduces STEER's calibration step.
+"""GMM calibrator -reproduces STEER's calibration step.
 
 Approach (per our reading of arXiv 2511.06190):
   1. Fit a 2-component GMM on the raw signal scores from the calibration set.
@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.mixture import GaussianMixture
 
-from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
 
 
 class GMMCalibrator(Calibrator):
@@ -66,3 +66,4 @@ class GMMCalibrator(Calibrator):
             if self.confidence(score) >= self.threshold
             else RouteDecision.LARGE
         )
+

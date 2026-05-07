@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from conformal_routing.config_paths import load_experiment_config, resolve_local_paths_in_config
-from conformal_routing.data.loaders import load_gpqa_diamond, load_split
+from conformal_routing.data.loaders import load_gpqa_diamond, load_math500, load_split
 
 
 def test_load_split_reads_local_aime_jsonl(tmp_path):
@@ -48,6 +50,74 @@ def test_gpqa_local_loader_builds_seeded_choices(tmp_path):
     assert first["answer"] == second["answer"]
     assert first["answer"] in {"A", "B", "C", "D"}
     assert "A." in first["question"]
+
+
+def test_math500_loader_accepts_prompt_field(tmp_path):
+    path = tmp_path / "math500.jsonl"
+    row = {
+        "unique_id": "test/precalculus/697.json",
+        "prompt": "Compute 1+1.",
+        "answer": "2",
+        "subject": "precalculus",
+        "level": "Level 1",
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    item = load_math500(dataset_paths={"math500": str(path)})[0]
+
+    assert item["id"] == "test/precalculus/697.json"
+    assert "Compute 1+1." in item["question"]
+    assert "Problem: None" not in item["question"]
+    assert item["meta"]["problem_field"] == "prompt"
+
+
+def test_math500_loader_accepts_nested_raw_problem(tmp_path):
+    path = tmp_path / "math500.jsonl"
+    row = {
+        "question_id": "test/precalculus/697.json",
+        "raw": {
+            "problem": "What is 2+2?",
+            "solution": "The answer is \\boxed{4}.",
+            "subject": "precalculus",
+        },
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    item = load_math500(dataset_paths={"math500": str(path)})[0]
+
+    assert item["id"] == "test/precalculus/697.json"
+    assert "What is 2+2?" in item["question"]
+    assert item["answer"] == "The answer is \\boxed{4}."
+    assert item["meta"]["problem_field"] == "raw.problem"
+
+
+def test_math500_loader_accepts_json_mapping_by_question_id(tmp_path):
+    path = tmp_path / "math500.json"
+    path.write_text(
+        json.dumps(
+            {
+                "test/precalculus/697.json": {
+                    "problem": "Find x if x+3=5.",
+                    "answer": "2",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    item = load_math500(dataset_paths={"math500": str(path)})[0]
+
+    assert item["id"] == "test/precalculus/697.json"
+    assert "Find x if x+3=5." in item["question"]
+
+
+def test_math500_loader_rejects_missing_problem_text(tmp_path):
+    path = tmp_path / "math500.jsonl"
+    row = {"question_id": "test/precalculus/697.json", "answer": "2"}
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing problem text"):
+        load_math500(dataset_paths={"math500": str(path)})
 
 
 def test_config_paths_resolve_relative_to_project_root(tmp_path):

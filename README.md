@@ -114,6 +114,18 @@ message with `continue_final_message=True`. Do not force `<think>` with
 `assistant_prefix_start`; leave it empty unless you are intentionally testing a
 custom prefill.
 
+The routing loop also uses a GlimpRouter-style repetition guard:
+
+```yaml
+pipeline:
+  stop_on_repetition: true
+  repetition_min_chars: 10
+```
+
+If the latest generated step exactly repeats the previous step, or repeats the
+step two turns back in an alternating loop, generation stops early with
+`stop_reason` set to `duplicate_step` or `alternating_step`.
+
 For a local DeepSeek-R1-Distill-Qwen-1.5B SLM plus remote Qwen3-14B LLM smoke
 test on MATH, use:
 
@@ -147,6 +159,24 @@ If your server uses another layout, edit `configs/default.yaml`.
 
 Absolute paths are supported. Relative paths are resolved against the project
 root even if you launch scripts from another working directory.
+
+### Math Dataset Problem Recognition
+
+Math-style loaders follow the GlimpRouter BPA priority first:
+`problem -> question -> prompt`. They also accept common local variants:
+`Problem`, `Question`, `Prompt`, `input`, `query`, `problem_statement`, and
+`problem_text`.
+
+If the row is wrapped in an output/debug object, the loader also inspects nested
+records under `raw`, `example`, `data`, `record`, and `row`. For JSON files
+stored as `{question_id: {...}}`, each mapping entry is converted into one row
+and the mapping key becomes the problem id.
+
+Missing problem text is treated as a hard error. This prevents silent prompts
+like `Problem: None`, which can make both models invent a problem and produce
+degenerate labels. Preliminary debug files include `question_preview` plus
+`question_meta.raw_keys` and `question_meta.problem_field` so you can confirm
+which source field was used.
 
 `VLLMWrapper` defaults to:
 
@@ -201,7 +231,7 @@ PYTHONPATH=src pytest tests/
 Expected Linux CPU result at the time of this update:
 
 ```text
-19 passed
+25 passed
 ```
 
 Check that the config points to existing local model and dataset assets:

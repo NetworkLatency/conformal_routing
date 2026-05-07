@@ -4,7 +4,7 @@ For math benchmarks, use `math-verify` (https://github.com/huggingface/Math-Veri
 which handles LaTeX equivalence (\\frac, \\boxed, etc.).
 
 For multiple choice (GPQA), parse the predicted letter choice.
-For code (LiveCodeBench), execute against test cases — out of scope of this prototype;
+For code (LiveCodeBench), execute against test cases - out of scope of this prototype;
 we'll use exact-match on extracted answer for v0 and upgrade later.
 """
 
@@ -84,7 +84,7 @@ def extract_answer(text: str) -> str | None:
 
 
 def extract_final_number(text: str) -> str | None:
-    """Last integer in the text — fallback for AIME (answers are 0-999 ints)."""
+    """Last integer in the text - fallback for AIME (answers are 0-999 ints)."""
     nums = re.findall(r"-?\d+", text)
     return nums[-1] if nums else None
 

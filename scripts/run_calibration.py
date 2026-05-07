@@ -67,6 +67,7 @@ def main():
             limit=cfg.get("limit"),
             dataset_paths=cfg.get("dataset_paths"),
         )
+        pipeline_cfg = cfg.get("pipeline", {})
         if strategy in {"agreement", "b", "B"}:
             examples = collect_with_agreement(
                 questions=questions,
@@ -75,6 +76,8 @@ def main():
                 signal=sig,
                 max_steps=cfg.get("max_steps", 32),
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
+                stop_on_repetition=pipeline_cfg.get("stop_on_repetition", True),
+                repetition_min_chars=pipeline_cfg.get("repetition_min_chars", 10),
             )
         else:
             examples = collect_with_outcome_propagation(
@@ -85,6 +88,8 @@ def main():
                 answer_checker=check_answer,
                 max_steps=cfg.get("max_steps", 32),
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
+                stop_on_repetition=pipeline_cfg.get("stop_on_repetition", True),
+                repetition_min_chars=pipeline_cfg.get("repetition_min_chars", 10),
             )
         with cache_path.open("wb") as f:
             pickle.dump(examples, f)

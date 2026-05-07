@@ -1,4 +1,4 @@
-from src.conformal_routing.data.loaders import (
+from conformal_routing.data.loaders import (
     load_aime,
     load_gpqa_diamond,
     load_livecodebench,
@@ -13,3 +13,4 @@ __all__ = [
     "load_math500",
     "load_split",
 ]
+

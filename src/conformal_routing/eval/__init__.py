@@ -1,4 +1,4 @@
-from src.conformal_routing.eval.metrics import (
+from conformal_routing.eval.metrics import (
     AggregateMetrics,
     aggregate,
     pareto_frontier,
@@ -11,3 +11,4 @@ __all__ = [
     "pareto_frontier",
     "realized_small_error_rate",
 ]
+

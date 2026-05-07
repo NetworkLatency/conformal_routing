@@ -48,6 +48,43 @@ DATASET_ALIASES: dict[str, tuple[str, ...]] = {
     "lcb_v6": ("lcb_v6", "livecodebench_v6"),
 }
 
+MATH_ID_KEYS = (
+    "id",
+    "ID",
+    "problem_id",
+    "question_id",
+    "unique_id",
+    "uid",
+    "path",
+    "file",
+    "filename",
+)
+MATH_PROBLEM_KEYS = (
+    "problem",
+    "Problem",
+    "question",
+    "Question",
+    "prompt",
+    "Prompt",
+    "input",
+    "Input",
+    "query",
+    "Query",
+    "problem_statement",
+    "problem_text",
+)
+MATH_ANSWER_KEYS = (
+    "answer",
+    "Answer",
+    "target",
+    "final_answer",
+    "final",
+    "output",
+    "solution",
+)
+MATH_NESTED_RECORD_KEYS = ("raw", "example", "data", "record", "row")
+MISSING_TEXT_VALUES = {"", "none", "nan", "null"}
+
 
 def _first_present(ex: Mapping[str, Any], *keys: str, default=None):
     for key in keys:
@@ -56,13 +93,176 @@ def _first_present(ex: Mapping[str, Any], *keys: str, default=None):
     return default
 
 
-def _math_prompt(problem: Any) -> str:
+def _is_missing_text(value: Any) -> bool:
+    if value is None:
+        return True
+    return str(value).strip().lower() in MISSING_TEXT_VALUES
+
+
+def _available_keys(ex: Mapping[str, Any]) -> list[str]:
+    return sorted(str(key) for key in ex.keys())
+
+
+def _coerce_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return None
+            if isinstance(parsed, Mapping):
+                return parsed
+    return None
+
+
+def _candidate_mappings(ex: Mapping[str, Any]) -> list[tuple[str | None, Mapping[str, Any]]]:
+    candidates: list[tuple[str | None, Mapping[str, Any]]] = [(None, ex)]
+    for container_key in MATH_NESTED_RECORD_KEYS:
+        nested = _coerce_mapping(ex.get(container_key))
+        if nested is not None:
+            candidates.append((container_key, nested))
+    return candidates
+
+
+def _field_label(container: str | None, key: str) -> str:
+    return key if container is None else f"{container}.{key}"
+
+
+def _first_field_match(
+    ex: Mapping[str, Any],
+    keys: tuple[str, ...],
+) -> tuple[Any | None, str | None]:
+    for container, candidate in _candidate_mappings(ex):
+        for key in keys:
+            if key in candidate and not _is_missing_text(candidate[key]):
+                return candidate[key], _field_label(container, key)
+    return None, None
+
+
+def _candidate_to_text(value: Any) -> str:
+    if isinstance(value, list):
+        messages = []
+        plain_parts = []
+        for item in value:
+            if isinstance(item, Mapping):
+                role = str(item.get("role", "")).lower()
+                content = item.get("content")
+                if role in {"user", "human"} and not _is_missing_text(content):
+                    messages.append(str(content).strip())
+            elif not _is_missing_text(item):
+                plain_parts.append(str(item).strip())
+        if messages:
+            return "\n\n".join(messages)
+        return "\n\n".join(plain_parts)
+
+    nested = _coerce_mapping(value)
+    if nested is not None:
+        nested_value, _ = _first_field_match(nested, MATH_PROBLEM_KEYS)
+        if nested_value is not None:
+            return _candidate_to_text(nested_value)
+        content = nested.get("content")
+        if not _is_missing_text(content):
+            return str(content).strip()
+
+    return "" if value is None else str(value).strip()
+
+
+def _clean_required_text(
+    value: Any,
+    *,
+    field_name: str,
+    dataset: str,
+    row_idx: int,
+    source: Path,
+    tried_keys: tuple[str, ...],
+    raw: Mapping[str, Any],
+) -> str:
+    text = _candidate_to_text(value)
+    if text.lower() in MISSING_TEXT_VALUES:
+        keys = ", ".join(_available_keys(raw)) or "<none>"
+        nested = ", ".join(MATH_NESTED_RECORD_KEYS)
+        raise ValueError(
+            f"{dataset} row {row_idx} in {source} is missing {field_name}. "
+            f"Tried direct keys: {', '.join(tried_keys)}. "
+            f"Also inspected nested records: {nested}. Available keys: {keys}"
+        )
+    return text
+
+
+def _clean_optional_id(value: Any, default: str) -> str:
+    text = _candidate_to_text(value)
+    if text.lower() in MISSING_TEXT_VALUES:
+        return default
+    return text
+
+
+def _math_prompt(problem: str) -> str:
     return (
         "Solve the following math problem and return ONLY the final answer.\n"
         "Please reason step by step, separate logical reasoning steps with two "
         "newline characters (\\n\\n), and put your final answer within \\boxed{}.\n\n"
-        f"Problem: {problem}\n\n"
+        f"Problem: {problem.strip()}\n\n"
     )
+
+
+def _math_item(
+    ex: Mapping[str, Any],
+    idx: int,
+    *,
+    path: Path,
+    benchmark: str,
+    default_prefix: str,
+) -> dict:
+    problem_value, problem_field = _first_field_match(ex, MATH_PROBLEM_KEYS)
+    answer_value, answer_field = _first_field_match(ex, MATH_ANSWER_KEYS)
+    problem = _clean_required_text(
+        problem_value,
+        field_name="problem text",
+        dataset=benchmark,
+        row_idx=idx,
+        source=path,
+        tried_keys=MATH_PROBLEM_KEYS,
+        raw=ex,
+    )
+    answer = _clean_required_text(
+        answer_value,
+        field_name="answer",
+        dataset=benchmark,
+        row_idx=idx,
+        source=path,
+        tried_keys=MATH_ANSWER_KEYS,
+        raw=ex,
+    )
+    id_value, id_field = _first_field_match(ex, MATH_ID_KEYS)
+    meta: dict[str, Any] = {
+        "benchmark": benchmark,
+        "dataset_path": str(path),
+        "raw_keys": _available_keys(ex),
+        "problem_field": problem_field,
+        "answer_field": answer_field,
+    }
+    subject, subject_field = _first_field_match(ex, ("subject", "Subject", "type", "Type"))
+    level, level_field = _first_field_match(ex, ("level", "Level"))
+    if subject is not None:
+        meta["subject"] = subject
+        meta["subject_field"] = subject_field
+    if level is not None:
+        meta["level"] = level
+        meta["level_field"] = level_field
+    if id_field is not None:
+        meta["id_field"] = id_field
+    return {
+        "id": _clean_optional_id(
+            id_value,
+            default=f"{default_prefix}_{idx}",
+        ),
+        "question": _math_prompt(problem),
+        "answer": answer,
+        "meta": meta,
+    }
 
 
 def _resolve_dataset_path(
@@ -118,7 +318,16 @@ def _read_json(path: Path) -> list[dict[str, Any]]:
                 rows = value[key]
                 break
         else:
-            rows = [value]
+            dict_items = [(key, row) for key, row in value.items() if isinstance(row, dict)]
+            if dict_items and len(dict_items) == len(value):
+                rows = []
+                for key, row in dict_items:
+                    normalized = dict(row)
+                    normalized.setdefault("id", key)
+                    normalized.setdefault("question_id", key)
+                    rows.append(normalized)
+            else:
+                rows = [value]
     else:
         raise ValueError(f"Unsupported JSON dataset shape in {path}")
     if not all(isinstance(row, dict) for row in rows):
@@ -184,12 +393,13 @@ def load_aime(
     path = _resolve_dataset_path(f"aime{year}", dataset_paths)
     rows = load_local_rows(path)
     return [
-        {
-            "id": str(_first_present(ex, "id", "ID", "problem_id", default=f"aime{year}_{i}")),
-            "question": _math_prompt(_first_present(ex, "problem", "Problem", "question", "Question")),
-            "answer": str(_first_present(ex, "answer", "Answer", "target", "final_answer")),
-            "meta": {"benchmark": f"aime{year}", "dataset_path": str(path)},
-        }
+        _math_item(
+            ex,
+            i,
+            path=path,
+            benchmark=f"aime{year}",
+            default_prefix=f"aime{year}",
+        )
         for i, ex in enumerate(rows)
     ]
 
@@ -198,17 +408,13 @@ def load_math500(dataset_paths: Mapping[str, str] | None = None) -> list[dict]:
     path = _resolve_dataset_path("math500", dataset_paths)
     rows = load_local_rows(path)
     return [
-        {
-            "id": str(_first_present(ex, "id", "ID", "problem_id", default=f"math500_{i}")),
-            "question": _math_prompt(_first_present(ex, "problem", "Problem", "question", "Question")),
-            "answer": str(_first_present(ex, "answer", "Answer", "target", "solution")),
-            "meta": {
-                "benchmark": "math500",
-                "dataset_path": str(path),
-                "subject": _first_present(ex, "subject", "Subject", default=None),
-                "level": _first_present(ex, "level", "Level", default=None),
-            },
-        }
+        _math_item(
+            ex,
+            i,
+            path=path,
+            benchmark="math500",
+            default_prefix="math500",
+        )
         for i, ex in enumerate(rows)
     ]
 

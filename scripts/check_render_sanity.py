@@ -10,8 +10,8 @@ from typing import Any
 
 from transformers import AutoTokenizer
 
-from src.conformal_routing.config_paths import configured_output_dir, load_experiment_config
-from src.conformal_routing.models.render import (
+from conformal_routing.config_paths import configured_output_dir, load_experiment_config
+from conformal_routing.models.render import (
     apply_chat_template_override,
     chat_template_hash,
     render_for_continuation,
@@ -77,3 +77,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

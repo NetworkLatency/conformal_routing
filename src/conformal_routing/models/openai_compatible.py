@@ -11,8 +11,8 @@ from typing import Any, Optional
 import numpy as np
 from transformers import AutoTokenizer
 
-from src.conformal_routing.models.base import FirstTokenProbe, ModelWrapper, StepOutput
-from src.conformal_routing.models.render import (
+from conformal_routing.models.base import FirstTokenProbe, ModelWrapper, StepOutput
+from conformal_routing.models.render import (
     apply_chat_template_override,
     render_for_continuation,
 )
@@ -274,4 +274,5 @@ class OpenAICompatibleWrapper(ModelWrapper):
         if step_delimiters and finish_reason == "stop":
             return False
         return finish_reason in {"stop", "eos"}
+
 

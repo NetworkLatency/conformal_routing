@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.conformal_routing.models.base import ModelWrapper
+from conformal_routing.models.base import ModelWrapper
 
 
 @dataclass
@@ -40,3 +40,4 @@ class SignalExtractor(ABC):
     def batch_extract(self, ctxs: list[SignalContext]) -> list[float]:
         """Default: just loop. Override for batched efficiency."""
         return [self.extract(c) for c in ctxs]
+

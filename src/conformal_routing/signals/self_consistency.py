@@ -17,7 +17,7 @@ from collections import Counter
 
 import numpy as np
 
-from src.conformal_routing.signals.base import SignalContext, SignalExtractor
+from conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 class SelfConsistencySignal(SignalExtractor):
@@ -75,3 +75,4 @@ class SelfConsistencySignal(SignalExtractor):
             return float(np.mean(ious))
 
         raise ValueError(f"Unknown metric {self.agreement_metric}")
+

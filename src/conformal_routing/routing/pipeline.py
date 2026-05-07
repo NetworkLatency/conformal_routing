@@ -32,7 +32,7 @@ Workflow per question:
             break
 
 The pipeline returns a `RoutingTrace` containing the full chain, per-step decisions,
-per-step signals, and cost breakdown — everything needed for evaluation.
+per-step signals, and cost breakdown -everything needed for evaluation.
 """
 
 from __future__ import annotations
@@ -43,9 +43,10 @@ from typing import Optional
 
 import numpy as np
 
-from src.conformal_routing.calibration.base import Calibrator, RouteDecision
-from src.conformal_routing.models.base import ModelWrapper
-from src.conformal_routing.signals.base import SignalContext, SignalExtractor
+from conformal_routing.calibration.base import Calibrator, RouteDecision
+from conformal_routing.models.base import ModelWrapper
+from conformal_routing.routing.safety import RepetitionState, update_strict_step_repetition
+from conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 @dataclass
@@ -58,6 +59,7 @@ class StepRecord:
     flops: float
     latency_s: float
     finished: bool
+    stop_reason: str | None = None
 
 
 @dataclass
@@ -69,6 +71,7 @@ class RoutingTrace:
     total_flops: float = 0.0
     total_latency_s: float = 0.0
     intervention_rate: float = 0.0  # fraction of steps routed to large
+    stop_reason: str | None = None
 
     def summary(self) -> dict:
         return {
@@ -77,6 +80,7 @@ class RoutingTrace:
             "intervention_rate": self.intervention_rate,
             "total_flops": self.total_flops,
             "total_latency_s": self.total_latency_s,
+            "stop_reason": self.stop_reason,
         }
 
 
@@ -89,6 +93,8 @@ class PipelineConfig:
     temperature_large: float = 0.0
     final_answer_markers: tuple[str, ...] = ("\\boxed{",)
     reuse_probe_first_token: bool = True
+    stop_on_repetition: bool = True
+    repetition_min_chars: int = 10
 
 
 class RoutingPipeline:
@@ -115,6 +121,7 @@ class RoutingPipeline:
         history = ""
         trace = RoutingTrace(question_id=question_id, question=question, final_answer_text="")
         n_large = 0
+        repetition = RepetitionState()
 
         for step_idx in range(self.cfg.max_steps):
             t0 = time.time()
@@ -169,9 +176,17 @@ class RoutingPipeline:
             # Add probe overhead (always 1 token of small).
             flops_used += self.small.estimate_flops(n_input, 1)
 
-            history += step_out.text + (
+            committed_text = step_out.text + (
                 self.cfg.step_delimiters[0] if not step_out.finished else ""
             )
+            history += committed_text
+            repetition_reason = None
+            if self.cfg.stop_on_repetition:
+                repetition_reason = update_strict_step_repetition(
+                    repetition,
+                    committed_text,
+                    min_chars=self.cfg.repetition_min_chars,
+                )
 
             trace.steps.append(
                 StepRecord(
@@ -182,16 +197,26 @@ class RoutingPipeline:
                     n_tokens=step_out.n_tokens,
                     flops=flops_used,
                     latency_s=latency,
-                    finished=step_out.finished,
+                    finished=step_out.finished or repetition_reason is not None,
+                    stop_reason=repetition_reason,
                 )
             )
             trace.total_flops += flops_used
             trace.total_latency_s += latency
 
-            if step_out.finished or self._has_final_answer(history):
+            if repetition_reason is not None:
+                trace.stop_reason = repetition_reason
+                break
+            if step_out.finished:
+                trace.stop_reason = str(step_out.extra.get("finish_reason") or "finished")
+                break
+            if self._has_final_answer(history):
+                trace.stop_reason = "final_answer"
                 break
 
         trace.final_answer_text = history
+        if trace.stop_reason is None:
+            trace.stop_reason = "max_steps"
         if trace.steps:
             trace.intervention_rate = n_large / len(trace.steps)
         return trace
@@ -204,3 +229,4 @@ class RoutingPipeline:
         # Cheap heuristic; for exact counts pass tokenizer in.
         # 4 chars/token is the standard rough rule.
         return max(1, len(text) // 4)
+
