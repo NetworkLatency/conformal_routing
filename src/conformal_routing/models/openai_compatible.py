@@ -50,6 +50,7 @@ class OpenAICompatibleWrapper(ModelWrapper):
         self._set_chat_template(chat_template, chat_template_path)
         self._model_name = api_model or model_name_or_path
         self._api_base_url = api_base_url.rstrip("/")
+        self._completion_url = self._build_completion_url(self._api_base_url)
         self._api_key = api_key
         self._n_params_billion = n_params_billion
         self._probe_logprobs = probe_logprobs
@@ -161,7 +162,7 @@ class OpenAICompatibleWrapper(ModelWrapper):
         body = {"model": self._model_name, "prompt": prompt}
         body.update({k: v for k, v in kwargs.items() if v is not None})
         req = urllib.request.Request(
-            f"{self._api_base_url}/v1/completions",
+            self._completion_url,
             data=json.dumps(body).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -175,6 +176,12 @@ class OpenAICompatibleWrapper(ModelWrapper):
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"Remote vLLM completion failed: {exc.code} {detail}") from exc
+
+    @staticmethod
+    def _build_completion_url(api_base_url: str) -> str:
+        if api_base_url.endswith("/v1"):
+            return f"{api_base_url}/completions"
+        return f"{api_base_url}/v1/completions"
 
     def _choice_to_step(
         self,

@@ -31,13 +31,19 @@ from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
 from src.conformal_routing.calibration.collect import (
+    collect_with_agreement,
     collect_with_outcome_propagation,
-    to_fit_inputs,
 )
 from src.conformal_routing.config_paths import configured_output_dir, load_experiment_config
 from src.conformal_routing.data.loaders import load_split
 from src.conformal_routing.models import build_model
 from src.conformal_routing.signals import build_signal
+
+
+def _json_metric(value: float) -> float | None:
+    if not np.isfinite(value):
+        return None
+    return float(value)
 
 
 def parse_args():
@@ -72,20 +78,36 @@ def main():
 
     # --- iterate over signals ---
     signal_names = cfg["signals"]  # e.g. ["h_init", "logit_confidence", "self_consistency"]
+    strategy = cfg.get("calibration_strategy", "outcome_propagation")
     results = {}
 
     for sname in signal_names:
         sig = build_signal(sname, **cfg.get("signal_kwargs", {}).get(sname, {}))
-        print(f"[preliminary] collecting signal={sname}")
-        examples = collect_with_outcome_propagation(
-            questions=questions,
-            small_model=small,
-            large_model=large,
-            signal=sig,
-            answer_checker=answer_checker,
-            max_steps=cfg.get("max_steps", 32),
-            step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
-        )
+        print(f"[preliminary] collecting signal={sname} strategy={strategy}")
+        if strategy == "agreement":
+            examples = collect_with_agreement(
+                questions=questions,
+                small_model=small,
+                large_model=large,
+                signal=sig,
+                max_steps=cfg.get("max_steps", 32),
+                step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
+            )
+        elif strategy == "outcome_propagation":
+            examples = collect_with_outcome_propagation(
+                questions=questions,
+                small_model=small,
+                large_model=large,
+                signal=sig,
+                answer_checker=answer_checker,
+                max_steps=cfg.get("max_steps", 32),
+                step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
+            )
+        else:
+            raise ValueError(
+                "run_preliminary_study.py supports calibration_strategy="
+                "'outcome_propagation' or 'agreement'."
+            )
         scores = np.array([e.score for e in examples])
         labels = np.array([e.small_correct for e in examples])
 
@@ -101,30 +123,36 @@ def main():
         results[sname] = {
             "n_examples": len(examples),
             "n_pos": int(labels.sum()),
-            "spearman": sp,
-            "pearson": pr,
-            "auc": auc,
-            "score_mean": float(scores.mean()),
-            "score_std": float(scores.std()),
+            "spearman": _json_metric(sp),
+            "pearson": _json_metric(pr),
+            "auc": _json_metric(auc),
+            "score_mean": _json_metric(float(scores.mean())),
+            "score_std": _json_metric(float(scores.std())),
         }
         # Save raw for later plotting.
         np.savez(out_dir / f"raw_{sname}.npz", scores=scores, labels=labels)
 
     # --- save summary ---
-    (out_dir / "summary.json").write_text(json.dumps(results, indent=2))
+    (out_dir / "summary.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print("\n=== Preliminary Study Summary ===")
     for sname, r in results.items():
-        print(f"  {sname:20s}  AUC={r['auc']:.3f}  Spearman={r['spearman']:.3f}  "
+        auc_text = "nan" if r["auc"] is None else f"{r['auc']:.3f}"
+        sp_text = "nan" if r["spearman"] is None else f"{r['spearman']:.3f}"
+        print(f"  {sname:20s}  AUC={auc_text}  Spearman={sp_text}  "
               f"n={r['n_examples']}  pos%={r['n_pos']/r['n_examples']:.2%}")
 
     # --- recommendation ---
     aucs = {k: v["auc"] for k, v in results.items()}
-    best = max(aucs, key=lambda k: aucs[k] if not np.isnan(aucs[k]) else -1)
-    print(f"\nRecommendation: best signal = {best} (AUC={aucs[best]:.3f})")
-    if aucs[best] < 0.6:
+    best = max(aucs, key=lambda k: aucs[k] if aucs[k] is not None else -1)
+    best_auc = aucs[best]
+    best_auc_text = "nan" if best_auc is None else f"{best_auc:.3f}"
+    print(f"\nRecommendation: best signal = {best} (AUC={best_auc_text})")
+    if best_auc is None:
+        print("  WARNING: no usable AUC. Labels contain only one class.")
+    elif best_auc < 0.6:
         print("  WARNING: best AUC < 0.6. Routing problem may be hard on this benchmark.")
-    elif "self_consistency" in aucs and aucs["self_consistency"] >= max(
-        aucs.get("h_init", 0), aucs.get("logit_confidence", 0)
+    elif aucs.get("self_consistency") is not None and aucs["self_consistency"] >= max(
+        aucs.get("h_init") or 0, aucs.get("logit_confidence") or 0
     ) + 0.05:
         print("  -> Take self_consistency forward; build Conformal on top (Route 1).")
     else:

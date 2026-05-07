@@ -17,7 +17,8 @@ benchmark: math500
 limit: 20
 max_steps: 16
 step_delimiters: ["\n\n"]
-calibration_strategy: outcome_propagation
+# Use the remote Qwen3-14B answer as a cheap cross-model agreement label.
+calibration_strategy: agreement
 
 dataset_paths:
   math500: /home/lhyang/Documents/code/reasoning_boundary/data/math500/MATH500.json
