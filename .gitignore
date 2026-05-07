@@ -1,0 +1,7 @@
+*.zip
+*.tar.gz
+.vscode
+.ssh
+.DS_Store
+*.pyc
+__pycache__/
