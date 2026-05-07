@@ -92,6 +92,7 @@ def main():
                 signal=sig,
                 max_steps=cfg.get("max_steps", 32),
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
+                debug_path=out_dir / f"debug_{sname}.jsonl",
             )
         elif strategy == "outcome_propagation":
             examples = collect_with_outcome_propagation(
@@ -102,6 +103,7 @@ def main():
                 answer_checker=answer_checker,
                 max_steps=cfg.get("max_steps", 32),
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
+                debug_path=out_dir / f"debug_{sname}.jsonl",
             )
         else:
             raise ValueError(

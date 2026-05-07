@@ -87,7 +87,7 @@ class PipelineConfig:
     step_delimiters: tuple[str, ...] = ("\n\n",)
     temperature_small: float = 0.0
     temperature_large: float = 0.0
-    final_answer_markers: tuple[str, ...] = ("\\boxed{", "</think>")
+    final_answer_markers: tuple[str, ...] = ("\\boxed{",)
     reuse_probe_first_token: bool = True
 
 

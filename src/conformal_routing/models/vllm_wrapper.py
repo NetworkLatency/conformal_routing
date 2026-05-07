@@ -16,6 +16,10 @@ from typing import Any, Optional
 
 import numpy as np
 
+from src.conformal_routing.models.render import (
+    apply_chat_template_override,
+    render_for_continuation,
+)
 from src.conformal_routing.models.base import (
     FirstTokenProbe,
     ModelWrapper,
@@ -23,7 +27,7 @@ from src.conformal_routing.models.base import (
 )
 
 
-FINAL_ANSWER_MARKERS = ("\\boxed{", "</think>")
+FINAL_ANSWER_MARKERS = ("\\boxed{",)
 LOG = logging.getLogger(__name__)
 
 
@@ -102,16 +106,21 @@ class VLLMWrapper(ModelWrapper):
             llm_kwargs.pop("max_logprobs", None)
             self.llm = LLM(**llm_kwargs)
         self.tokenizer = self.llm.get_tokenizer()
-        self._set_chat_template(chat_template, chat_template_path)
+        apply_chat_template_override(self.tokenizer, chat_template, chat_template_path)
         self._SamplingParams = SamplingParams
         self._model_name = model_path
         self._n_params_billion = n_params_billion
         self._vocab_size: Optional[int] = self._infer_vocab_size()
         self._probe_logprobs = min(max(1, int(probe_logprobs)), self.vocab_size)
         self._use_chat_template = use_chat_template
-        self._assistant_prefix_start = assistant_prefix_start
         self._continue_final_message = continue_final_message
         self._add_generation_prompt = add_generation_prompt
+        if assistant_prefix_start:
+            LOG.warning(
+                "assistant_prefix_start=%r is ignored. Prompt continuation now follows "
+                "the tokenizer chat template directly, matching GlimpRouter's BPA renderer.",
+                assistant_prefix_start,
+            )
 
     @property
     def model_name(self) -> str:
@@ -125,7 +134,13 @@ class VLLMWrapper(ModelWrapper):
     def render_prompt(self, question: str, history: str = "") -> str:
         if not self._use_chat_template:
             return question + history
-        return self._render_chat_continuation(question, history)
+        return render_for_continuation(
+            question,
+            history,
+            self.tokenizer,
+            add_generation_prompt=self._add_generation_prompt,
+            continue_final_message=self._continue_final_message,
+        )
 
     def probe_first_token(self, context: str) -> FirstTokenProbe:
         """Single forward pass returning next-token logits.
@@ -239,55 +254,6 @@ class VLLMWrapper(ModelWrapper):
             )
         return str(path) if path.exists() else value
 
-    def _set_chat_template(
-        self,
-        chat_template: str | None,
-        chat_template_path: str | None,
-    ) -> None:
-        if chat_template_path:
-            chat_template = Path(chat_template_path).read_text(encoding="utf-8")
-        if chat_template:
-            self.tokenizer.chat_template = chat_template
-
-    def _assistant_prefix(self, history: str) -> str:
-        if not self._assistant_prefix_start:
-            return history
-        if history.startswith(self._assistant_prefix_start):
-            return history
-        return self._assistant_prefix_start + history
-
-    def _render_chat_continuation(self, question: str, history: str) -> str:
-        assistant_prefix = self._assistant_prefix(history)
-        if assistant_prefix:
-            messages = [
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": assistant_prefix},
-            ]
-            try:
-                return self.tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    continue_final_message=self._continue_final_message,
-                    add_generation_prompt=False,
-                )
-            except ValueError as exc:
-                if "continue_final_message" not in str(exc):
-                    raise
-                LOG.debug(
-                    "continue_final_message unsupported; falling back to concat: %s",
-                    exc,
-                )
-                return self._render_generation_prompt(question) + assistant_prefix
-        return self._render_generation_prompt(question)
-
-    def _render_generation_prompt(self, question: str) -> str:
-        return self.tokenizer.apply_chat_template(
-            [{"role": "user", "content": question}],
-            tokenize=False,
-            continue_final_message=False,
-            add_generation_prompt=self._add_generation_prompt,
-        )
-
     def _generate_single(
         self,
         context: str,
@@ -357,7 +323,7 @@ class VLLMWrapper(ModelWrapper):
 
     def _encode(self, text: str) -> list[int]:
         try:
-            return list(self.tokenizer.encode(text, add_special_tokens=True))
+            return list(self.tokenizer.encode(text, add_special_tokens=False))
         except TypeError:
             return list(self.tokenizer.encode(text))
 

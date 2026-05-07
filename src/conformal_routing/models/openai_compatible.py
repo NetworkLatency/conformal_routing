@@ -6,16 +6,19 @@ import json
 import logging
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 from transformers import AutoTokenizer
 
 from src.conformal_routing.models.base import FirstTokenProbe, ModelWrapper, StepOutput
+from src.conformal_routing.models.render import (
+    apply_chat_template_override,
+    render_for_continuation,
+)
 
 
-FINAL_ANSWER_MARKERS = ("\\boxed{", "</think>")
+FINAL_ANSWER_MARKERS = ("\\boxed{",)
 LOG = logging.getLogger(__name__)
 
 
@@ -47,7 +50,7 @@ class OpenAICompatibleWrapper(ModelWrapper):
             trust_remote_code=trust_remote_code,
             use_fast=True,
         )
-        self._set_chat_template(chat_template, chat_template_path)
+        apply_chat_template_override(self.tokenizer, chat_template, chat_template_path)
         self._model_name = api_model or model_name_or_path
         self._api_base_url = api_base_url.rstrip("/")
         self._completion_url = self._build_completion_url(self._api_base_url)
@@ -55,10 +58,15 @@ class OpenAICompatibleWrapper(ModelWrapper):
         self._n_params_billion = n_params_billion
         self._probe_logprobs = probe_logprobs
         self._use_chat_template = use_chat_template
-        self._assistant_prefix_start = assistant_prefix_start
         self._continue_final_message = continue_final_message
         self._add_generation_prompt = add_generation_prompt
         self._timeout_s = timeout_s
+        if assistant_prefix_start:
+            LOG.warning(
+                "assistant_prefix_start=%r is ignored. Prompt continuation now follows "
+                "the tokenizer chat template directly, matching GlimpRouter's BPA renderer.",
+                assistant_prefix_start,
+            )
 
     @property
     def model_name(self) -> str:
@@ -78,7 +86,13 @@ class OpenAICompatibleWrapper(ModelWrapper):
     def render_prompt(self, question: str, history: str = "") -> str:
         if not self._use_chat_template:
             return question + history
-        return self._render_chat_continuation(question, history)
+        return render_for_continuation(
+            question,
+            history,
+            self.tokenizer,
+            add_generation_prompt=self._add_generation_prompt,
+            continue_final_message=self._continue_final_message,
+        )
 
     def probe_first_token(self, context: str) -> FirstTokenProbe:
         data = self._completion(
@@ -261,51 +275,3 @@ class OpenAICompatibleWrapper(ModelWrapper):
             return False
         return finish_reason in {"stop", "eos"}
 
-    def _set_chat_template(
-        self,
-        chat_template: str | None,
-        chat_template_path: str | None,
-    ) -> None:
-        if chat_template_path:
-            chat_template = Path(chat_template_path).read_text(encoding="utf-8")
-        if chat_template:
-            self.tokenizer.chat_template = chat_template
-
-    def _assistant_prefix(self, history: str) -> str:
-        if not self._assistant_prefix_start:
-            return history
-        if history.startswith(self._assistant_prefix_start):
-            return history
-        return self._assistant_prefix_start + history
-
-    def _render_chat_continuation(self, question: str, history: str) -> str:
-        assistant_prefix = self._assistant_prefix(history)
-        if assistant_prefix:
-            messages = [
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": assistant_prefix},
-            ]
-            try:
-                return self.tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    continue_final_message=self._continue_final_message,
-                    add_generation_prompt=False,
-                )
-            except ValueError as exc:
-                if "continue_final_message" not in str(exc):
-                    raise
-                LOG.debug(
-                    "continue_final_message unsupported; falling back to concat: %s",
-                    exc,
-                )
-                return self._render_generation_prompt(question) + assistant_prefix
-        return self._render_generation_prompt(question)
-
-    def _render_generation_prompt(self, question: str) -> str:
-        return self.tokenizer.apply_chat_template(
-            [{"role": "user", "content": question}],
-            tokenize=False,
-            continue_final_message=False,
-            add_generation_prompt=self._add_generation_prompt,
-        )

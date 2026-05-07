@@ -27,7 +27,9 @@ calibrator in a few hours rather than days. Upgrade to (A) for the final paper.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Iterable
 
 import numpy as np
@@ -36,6 +38,8 @@ from tqdm import tqdm
 from src.conformal_routing.calibration.base import FitInputs
 from src.conformal_routing.eval.answer_check import (
     check_answer,
+    clean_latex_answer,
+    extract_answer,
     extract_boxed_answer,
     extract_choice_answer,
     extract_final_number,
@@ -62,6 +66,7 @@ def collect_with_outcome_propagation(
     max_steps: int = 32,
     step_delimiters: tuple[str, ...] = ("\n\n",),
     embed_fn: Callable[[str], np.ndarray] | None = None,
+    debug_path: str | Path | None = None,
 ) -> list[CalibrationExample]:
     """Strategy (C): outcome propagation.
 
@@ -71,10 +76,12 @@ def collect_with_outcome_propagation(
       3. Label every step in this trajectory with the same `small_correct`.
     """
     out: list[CalibrationExample] = []
+    debug_rows = []
 
     for q in tqdm(questions, desc="Calibration (outcome propagation)"):
         history = ""
         per_step = []
+        last_step_extra = {}
         for step_idx in range(max_steps):
             prompt = small_model.render_prompt(q["question"], history)
             probe = small_model.probe_first_token(prompt)
@@ -93,11 +100,24 @@ def collect_with_outcome_propagation(
             )
             per_step.append((step_idx, score))
             history += step_out.text + (step_delimiters[0] if not step_out.finished else "")
+            last_step_extra = dict(step_out.extra)
             if step_out.finished:
                 break
 
         small_correct = int(answer_checker(history, q["answer"]))
         embed = embed_fn(q["question"]) if embed_fn is not None else None
+        if debug_path is not None:
+            debug_rows.append(
+                {
+                    "question_id": q["id"],
+                    "n_steps": len(per_step),
+                    "small_correct": small_correct,
+                    "gold": q["answer"],
+                    "small_extracted": extract_answer(history),
+                    "small_tail": history[-1000:],
+                    "last_step_extra": last_step_extra,
+                }
+            )
 
         for step_idx, score in per_step:
             out.append(
@@ -109,6 +129,7 @@ def collect_with_outcome_propagation(
                     embed=embed,
                 )
             )
+    _write_debug_rows(debug_path, debug_rows)
     return out
 
 
@@ -120,6 +141,7 @@ def collect_with_agreement(
     max_steps: int = 32,
     step_delimiters: tuple[str, ...] = ("\n\n",),
     embed_fn: Callable[[str], np.ndarray] | None = None,
+    debug_path: str | Path | None = None,
 ) -> list[CalibrationExample]:
     """Strategy (B): label step as correct if small and large agree on FINAL answer
     when each runs solo from the same question.
@@ -129,10 +151,12 @@ def collect_with_agreement(
     answer is used as the reference for ``check_answer``.
     """
     out: list[CalibrationExample] = []
+    debug_rows = []
 
     for q in tqdm(questions, desc="Calibration (small-large agreement)"):
         history = ""
         per_step = []
+        last_step_extra = {}
         for step_idx in range(max_steps):
             prompt = small_model.render_prompt(q["question"], history)
             probe = small_model.probe_first_token(prompt)
@@ -151,6 +175,7 @@ def collect_with_agreement(
             )
             per_step.append((step_idx, score))
             history += step_out.text + (step_delimiters[0] if not step_out.finished else "")
+            last_step_extra = dict(step_out.extra)
             if step_out.finished:
                 break
 
@@ -158,6 +183,21 @@ def collect_with_agreement(
         large_reference = _extract_reference_answer(large_out.text)
         small_correct = int(check_answer(history, large_reference))
         embed = embed_fn(q["question"]) if embed_fn is not None else None
+        if debug_path is not None:
+            debug_rows.append(
+                {
+                    "question_id": q["id"],
+                    "n_steps": len(per_step),
+                    "small_correct": small_correct,
+                    "large_reference": large_reference,
+                    "small_extracted": extract_answer(history),
+                    "large_extracted": extract_answer(large_out.text),
+                    "small_tail": history[-1000:],
+                    "large_tail": large_out.text[-1000:],
+                    "last_step_extra": last_step_extra,
+                    "large_extra": dict(large_out.extra),
+                }
+            )
 
         for step_idx, score in per_step:
             out.append(
@@ -169,16 +209,36 @@ def collect_with_agreement(
                     embed=embed,
                 )
             )
+    _write_debug_rows(debug_path, debug_rows)
     return out
 
 
 def _extract_reference_answer(text: str) -> str:
+    answer_region = text.split("</think>", 1)[1] if "</think>" in text else text
+    boxed = extract_boxed_answer(answer_region)
+    if boxed is not None:
+        return clean_latex_answer(boxed) or boxed
+    choice = extract_choice_answer(answer_region)
+    if choice is not None:
+        return choice
+    number = extract_final_number(answer_region)
+    if number is not None:
+        return number
     return (
-        extract_boxed_answer(text)
-        or extract_choice_answer(text)
-        or extract_final_number(text)
+        extract_answer(answer_region)
+        or extract_answer(text)
         or text
     )
+
+
+def _write_debug_rows(debug_path: str | Path | None, rows: list[dict]) -> None:
+    if debug_path is None:
+        return
+    path = Path(debug_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def to_fit_inputs(examples: Iterable[CalibrationExample]) -> FitInputs:

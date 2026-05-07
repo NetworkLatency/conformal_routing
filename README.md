@@ -4,8 +4,8 @@ A pluggable framework for stepwise routing between small and large reasoning
 models. It can reproduce STEER-style confidence routing and run conformal
 calibration on top of step-level confidence signals.
 
-The current code is designed for an offline GPU server: models and benchmark
-data are loaded from local paths only.
+The current code is designed for an offline Linux GPU server: models and
+benchmark data are loaded from local paths only.
 
 ## Design
 
@@ -49,6 +49,7 @@ src/conformal_routing/
   eval/         answer checking and aggregate metrics
 scripts/
   check_offline_assets.py
+  check_render_sanity.py
   run_preliminary_study.py
   run_calibration.py
   run_inference.py
@@ -101,12 +102,17 @@ vllm_defaults:
   offline: true
   require_local_model: true
   use_chat_template: true
-  assistant_prefix_start: "<think>"
+  assistant_prefix_start: ""
   continue_final_message: true
   add_generation_prompt: true
 ```
 
-Model-specific fields override these defaults.
+Model-specific fields override these defaults. Chat rendering follows the
+GlimpRouter BPA strategy: the tokenizer's own chat template renders the user
+turn with `add_generation_prompt=True`, and later steps continue the assistant
+message with `continue_final_message=True`. Do not force `<think>` with
+`assistant_prefix_start`; leave it empty unless you are intentionally testing a
+custom prefill.
 
 For a local DeepSeek-R1-Distill-Qwen-1.5B SLM plus remote Qwen3-14B LLM smoke
 test on MATH, use:
@@ -192,17 +198,10 @@ Run CPU tests before launching GPU jobs:
 PYTHONPATH=src pytest tests/
 ```
 
-Windows PowerShell equivalent:
-
-```powershell
-$env:PYTHONPATH = "src"
-python -m pytest tests
-```
-
-Expected local result at the time of this update:
+Expected Linux CPU result at the time of this update:
 
 ```text
-12 passed
+19 passed
 ```
 
 Check that the config points to existing local model and dataset assets:
@@ -211,12 +210,15 @@ Check that the config points to existing local model and dataset assets:
 PYTHONPATH=src python scripts/check_offline_assets.py
 ```
 
-PowerShell:
+Check tokenizer chat-template rendering before starting a long vLLM job:
 
-```powershell
-$env:PYTHONPATH = "src"
-python scripts/check_offline_assets.py
+```bash
+python scripts/check_render_sanity.py --config configs/math_remote_qwen3.yaml
 ```
+
+This writes `outputs/diagnostics/render_sanity.json`, including template hashes,
+whether an empty assistant prefix already contains `<think>`, and rendered prompt
+previews for empty and `</think>` continuations.
 
 ## Run Preliminary Study
 
@@ -232,6 +234,7 @@ Output:
 ```text
 outputs/preliminary/summary.json
 outputs/preliminary/raw_<signal>.npz
+outputs/preliminary/debug_<signal>.jsonl
 ```
 
 After this, inspect `outputs/preliminary/summary.json` and update
@@ -278,22 +281,13 @@ python scripts/run_inference.py \
     --calibrator outputs/calibrators/conformal_aime_conformal_alpha010.pkl
 ```
 
-All fitted calibrators on Linux/bash:
+All fitted calibrators:
 
 ```bash
 for cal in outputs/calibrators/conformal_aime_*_*.pkl; do
     python scripts/run_inference.py \
         --calibrator "$cal"
 done
-```
-
-PowerShell:
-
-```powershell
-Get-ChildItem outputs/calibrators/conformal_aime_*_*.pkl | ForEach-Object {
-    python scripts/run_inference.py `
-        --calibrator $_.FullName
-}
 ```
 
 Inference writes per-question JSONL traces and summary JSON files under:

@@ -9,8 +9,9 @@ offline server execution with local model and dataset paths.
 | Module | Status | Notes |
 |---|---:|---|
 | `models/base.py` | complete | Adds default `sample_prefixes` fallback. |
-| `models/vllm_wrapper.py` | complete | vLLM init, chat-template rendering, probing, step/full generation, batched prefix sampling, offline path validation. |
+| `models/vllm_wrapper.py` | complete | vLLM init, GlimpRouter-style chat-template continuation rendering, probing, step/full generation, batched prefix sampling, offline path validation. |
 | `models/openai_compatible.py` | complete | Remote OpenAI-compatible vLLM completion backend. |
+| `models/render.py` | complete | Shared tokenizer chat-template rendering helpers and render sanity metadata. |
 | `models/factory.py` | complete | Selects local vLLM vs remote OpenAI-compatible backend from config. |
 | `signals/base.py` | complete | Shared signal interface. |
 | `signals/h_init.py` | complete | Entropy-based signal. |
@@ -51,8 +52,13 @@ Done in `src/conformal_routing/models/vllm_wrapper.py`.
   - `generate_full`
   - `sample_prefixes`
 - Supports forced prefix token ids for probe reuse.
-- Supports tokenizer `apply_chat_template` continuation rendering, optional
-  `chat_template_path`, and explicit reasoning prefill such as `<think>`.
+- Supports tokenizer `apply_chat_template` continuation rendering and optional
+  `chat_template_path`.
+- Rendering now mirrors `GlimpRouter-main/bpa/render.py`: empty assistant history
+  uses `add_generation_prompt=True`; non-empty history is rendered as an assistant
+  message with `continue_final_message=True`.
+- `assistant_prefix_start` is intentionally left empty in configs. Do not force
+  `<think>` unless deliberately testing a custom template/prefill.
 
 ### Remote Qwen3 LLM support
 
@@ -150,6 +156,7 @@ Run these before a GPU experiment:
 pip install -e ".[dev]"
 PYTHONPATH=src pytest tests/
 PYTHONPATH=src python scripts/check_offline_assets.py
+PYTHONPATH=src python scripts/check_render_sanity.py --config configs/math_remote_qwen3.yaml
 ```
 
 If the server has no internet access, install dependencies from a prepared local
@@ -159,9 +166,11 @@ wheelhouse or prebuilt environment before running the commands above.
 
 ```bash
 # 1. Preliminary study.
-python scripts/run_preliminary_study.py
+python scripts/check_render_sanity.py --config configs/math_remote_qwen3.yaml
+python scripts/run_preliminary_study.py --config configs/math_remote_qwen3.yaml
 
 # 2. Inspect outputs/preliminary/summary.json and choose the best signal.
+#    If labels are degenerate, inspect outputs/preliminary/debug_<signal>.jsonl.
 #    Then update configs/default.yaml -> signal.name / signal.kwargs.
 
 # 3. Fit calibrators on the calibration split.
@@ -174,25 +183,16 @@ for cal in outputs/calibrators/conformal_aime_*_*.pkl; do
 done
 ```
 
-PowerShell equivalent:
-
-```powershell
-Get-ChildItem outputs/calibrators/conformal_aime_*_*.pkl | ForEach-Object {
-    python scripts/run_inference.py `
-        --calibrator $_.FullName
-}
-```
-
 Inference writes JSONL traces and summary JSON files under `outputs/inference/`.
 
 ## Verification Snapshot
 
-Last local CPU verification:
+Expected Linux CPU verification:
 
 ```text
 python -m compileall src scripts tests
 PYTHONPATH=src pytest tests/
-12 passed
+19 passed
 ```
 
 Also checked with ripgrep: no remote dataset/model identifiers or remote

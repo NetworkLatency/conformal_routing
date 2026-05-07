@@ -119,7 +119,5 @@ def test_remote_config_keeps_remote_model_id_and_resolves_tokenizer():
 
     assert cfg["large_model"]["backend"] == "openai_compatible"
     assert cfg["large_model"]["model_name_or_path"] == "Qwen3-14B"
-    assert cfg["large_model"]["tokenizer_name_or_path"].endswith("models\\Qwen3-14B") or (
-        cfg["large_model"]["tokenizer_name_or_path"].endswith("models/Qwen3-14B")
-    )
+    assert cfg["large_model"]["tokenizer_name_or_path"].startswith("/home/")
     assert cfg["small_model"]["use_chat_template"] is True

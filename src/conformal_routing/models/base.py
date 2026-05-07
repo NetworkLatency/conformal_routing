@@ -86,7 +86,7 @@ class ModelWrapper(ABC):
         A step ends when:
           - any of `step_delimiters` is generated, OR
           - EOS / max_tokens is reached, OR
-          - the model emits the final-answer marker (model-specific, e.g. </think>)
+          - the model emits a final-answer marker, e.g. \\boxed{...}
 
         If `prefix_token_ids` is provided, those tokens are forced as the start of the
         step (used when we already probed the first token and want to continue with it).

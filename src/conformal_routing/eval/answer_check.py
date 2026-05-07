@@ -13,10 +13,74 @@ from __future__ import annotations
 import re
 
 
+CLOSE_THINK_TAG = "</think>"
+
+
 def extract_boxed_answer(text: str) -> str | None:
-    """Extract content inside \\boxed{...}. Handles nested braces minimally."""
-    matches = re.findall(r"\\boxed\{([^}]*)\}", text)
-    return matches[-1] if matches else None
+    """Extract the last \\boxed answer, including nested braces."""
+    positions = []
+    start = 0
+    while True:
+        idx = text.find(r"\boxed", start)
+        if idx == -1:
+            break
+        positions.append(idx)
+        start = idx + len(r"\boxed")
+    if not positions:
+        return None
+
+    idx = positions[-1] + len(r"\boxed")
+    while idx < len(text) and text[idx].isspace():
+        idx += 1
+    if idx >= len(text):
+        return None
+    if text[idx] == "{":
+        depth = 0
+        content_start = idx + 1
+        for j in range(idx, len(text)):
+            ch = text[j]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[content_start:j]
+        return None
+
+    end = idx
+    while end < len(text) and not text[end].isspace():
+        end += 1
+    token = text[idx:end].strip()
+    return token or None
+
+
+def clean_latex_answer(answer: str | None) -> str | None:
+    if answer is None:
+        return None
+    s = str(answer).strip()
+    if not s:
+        return None
+    while True:
+        if len(s) >= 4 and s.startswith("$$") and s.endswith("$$"):
+            s = s[2:-2].strip()
+            continue
+        if len(s) >= 2 and s.startswith("$") and s.endswith("$"):
+            s = s[1:-1].strip()
+            continue
+        break
+    s = s.replace(r"\dfrac", r"\frac").replace(r"\tfrac", r"\frac")
+    s = s.replace(r"\left", "").replace(r"\right", "")
+    s = re.sub(r"\\sqrt\s*([A-Za-z0-9])(?![A-Za-z0-9])", r"\\sqrt{\1}", s)
+    return s.strip() or None
+
+
+def extract_answer(text: str) -> str | None:
+    boxed = extract_boxed_answer(text)
+    if boxed is not None:
+        return clean_latex_answer(boxed)
+    if CLOSE_THINK_TAG in text:
+        return clean_latex_answer(text.split(CLOSE_THINK_TAG, 1)[1])
+    return clean_latex_answer(text)
 
 
 def extract_final_number(text: str) -> str | None:
@@ -70,12 +134,19 @@ def check_answer(predicted_text: str, gold: str) -> bool:
 
     pred_box = extract_boxed_answer(predicted_text)
     if pred_box is not None:
-        if pred_box.strip() == gold.strip():
+        pred_clean = clean_latex_answer(pred_box)
+        gold_clean = clean_latex_answer(gold)
+        if pred_clean == gold_clean:
             return True
-        pred_int = _normalize_int(pred_box)
-        gold_int = _normalize_int(gold)
+        pred_int = _normalize_int(pred_clean or "")
+        gold_int = _normalize_int(gold_clean or "")
         if pred_int is not None and gold_int is not None and pred_int == gold_int:
             return True
+
+    pred_answer = extract_answer(predicted_text)
+    gold_answer = extract_answer(gold)
+    if pred_answer is not None and gold_answer is not None and pred_answer == gold_answer:
+        return True
 
     gold_choice = extract_choice_answer(gold)
     pred_choice = extract_choice_answer(predicted_text)
