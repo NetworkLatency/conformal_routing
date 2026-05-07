@@ -46,6 +46,24 @@ def _json_metric(value: float) -> float | None:
     return float(value)
 
 
+def _collection_limits(cfg: dict) -> tuple[int | None, int, int | None]:
+    pipeline_cfg = cfg.get("pipeline", {})
+    max_steps = pipeline_cfg.get("max_steps", cfg.get("max_steps", 32))
+    max_tokens_per_step = pipeline_cfg.get(
+        "max_tokens_per_step",
+        cfg.get("max_tokens_per_step", 1024),
+    )
+    max_total_tokens = pipeline_cfg.get(
+        "max_total_tokens",
+        cfg.get("max_total_tokens"),
+    )
+    return (
+        None if max_steps is None else int(max_steps),
+        int(max_tokens_per_step),
+        None if max_total_tokens is None else int(max_total_tokens),
+    )
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--config", default="configs/default.yaml", type=Path)
@@ -80,6 +98,7 @@ def main():
     signal_names = cfg["signals"]  # e.g. ["h_init", "logit_confidence", "self_consistency"]
     strategy = cfg.get("calibration_strategy", "outcome_propagation")
     pipeline_cfg = cfg.get("pipeline", {})
+    max_steps, max_tokens_per_step, max_total_tokens = _collection_limits(cfg)
     results = {}
 
     for sname in signal_names:
@@ -91,7 +110,9 @@ def main():
                 small_model=small,
                 large_model=large,
                 signal=sig,
-                max_steps=cfg.get("max_steps", 32),
+                max_steps=max_steps,
+                max_tokens_per_step=max_tokens_per_step,
+                max_total_tokens=max_total_tokens,
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
                 debug_path=out_dir / f"debug_{sname}.jsonl",
                 stop_on_repetition=pipeline_cfg.get("stop_on_repetition", True),
@@ -104,7 +125,9 @@ def main():
                 large_model=large,
                 signal=sig,
                 answer_checker=answer_checker,
-                max_steps=cfg.get("max_steps", 32),
+                max_steps=max_steps,
+                max_tokens_per_step=max_tokens_per_step,
+                max_total_tokens=max_total_tokens,
                 step_delimiters=tuple(cfg.get("step_delimiters", ["\n\n"])),
                 debug_path=out_dir / f"debug_{sname}.jsonl",
                 stop_on_repetition=pipeline_cfg.get("stop_on_repetition", True),

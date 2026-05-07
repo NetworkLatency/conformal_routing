@@ -64,7 +64,9 @@ def collect_with_outcome_propagation(
     large_model: ModelWrapper,      # not strictly needed for (C) but kept for signature parity
     signal: SignalExtractor,
     answer_checker: Callable[[str, str], bool],   # (predicted_text, gold) -> bool
-    max_steps: int = 32,
+    max_steps: int | None = 32,
+    max_tokens_per_step: int = 1024,
+    max_total_tokens: int | None = None,
     step_delimiters: tuple[str, ...] = ("\n\n",),
     embed_fn: Callable[[str], np.ndarray] | None = None,
     debug_path: str | Path | None = None,
@@ -87,7 +89,18 @@ def collect_with_outcome_propagation(
         last_step_extra = {}
         stop_reason = None
         repetition = RepetitionState()
-        for step_idx in range(max_steps):
+        step_idx = 0
+        total_step_tokens = 0
+        while max_steps is None or step_idx < max_steps:
+            if max_total_tokens is not None:
+                remaining_tokens = max_total_tokens - total_step_tokens
+                if remaining_tokens <= 0:
+                    stop_reason = "max_total_tokens"
+                    break
+                step_token_budget = min(max_tokens_per_step, remaining_tokens)
+            else:
+                step_token_budget = max_tokens_per_step
+
             prompt = small_model.render_prompt(q["question"], history)
             probe = small_model.probe_first_token(prompt)
             ctx = SignalContext(
@@ -101,12 +114,18 @@ def collect_with_outcome_propagation(
 
             step_out = small_model.generate_step(
                 prompt,
+                max_tokens=step_token_budget,
                 step_delimiters=step_delimiters,
             )
-            per_step.append((step_idx, score))
+            per_step.append((step_idx, score, step_out.n_tokens))
+            total_step_tokens += step_out.n_tokens
             committed_text = step_out.text + (step_delimiters[0] if not step_out.finished else "")
             history += committed_text
             last_step_extra = dict(step_out.extra)
+            if step_out.n_tokens == 0 and not step_out.text and not step_out.finished:
+                stop_reason = "empty_step"
+                last_step_extra["stop_reason"] = stop_reason
+                break
             if stop_on_repetition:
                 stop_reason = update_strict_step_repetition(
                     repetition,
@@ -117,9 +136,19 @@ def collect_with_outcome_propagation(
                     last_step_extra["stop_reason"] = stop_reason
                     break
             if step_out.finished:
-                stop_reason = str(step_out.extra.get("finish_reason") or "finished")
+                stop_reason = (
+                    "final_answer"
+                    if extract_boxed_answer(history) is not None
+                    else str(step_out.extra.get("finish_reason") or "finished")
+                )
                 break
+            if max_total_tokens is not None and total_step_tokens >= max_total_tokens:
+                stop_reason = "max_total_tokens"
+                break
+            step_idx += 1
 
+        if stop_reason is None and max_steps is not None and len(per_step) >= max_steps:
+            stop_reason = "max_steps"
         small_correct = int(answer_checker(history, q["answer"]))
         embed = embed_fn(q["question"]) if embed_fn is not None else None
         if debug_path is not None:
@@ -129,6 +158,12 @@ def collect_with_outcome_propagation(
                     "question_preview": _question_preview(q),
                     "question_meta": dict(q.get("meta", {})),
                     "n_steps": len(per_step),
+                    "max_steps": max_steps,
+                    "max_tokens_per_step": max_tokens_per_step,
+                    "max_total_tokens": max_total_tokens,
+                    "small_output_chars": len(history),
+                    "small_output_tokens": total_step_tokens,
+                    "small_has_boxed": extract_boxed_answer(history) is not None,
                     "small_correct": small_correct,
                     "gold": q["answer"],
                     "small_extracted": extract_answer(history),
@@ -138,7 +173,7 @@ def collect_with_outcome_propagation(
                 }
             )
 
-        for step_idx, score in per_step:
+        for step_idx, score, _ in per_step:
             out.append(
                 CalibrationExample(
                     question_id=q["id"],
@@ -157,7 +192,9 @@ def collect_with_agreement(
     small_model: ModelWrapper,
     large_model: ModelWrapper,
     signal: SignalExtractor,
-    max_steps: int = 32,
+    max_steps: int | None = 32,
+    max_tokens_per_step: int = 1024,
+    max_total_tokens: int | None = None,
     step_delimiters: tuple[str, ...] = ("\n\n",),
     embed_fn: Callable[[str], np.ndarray] | None = None,
     debug_path: str | Path | None = None,
@@ -180,7 +217,18 @@ def collect_with_agreement(
         last_step_extra = {}
         stop_reason = None
         repetition = RepetitionState()
-        for step_idx in range(max_steps):
+        step_idx = 0
+        total_step_tokens = 0
+        while max_steps is None or step_idx < max_steps:
+            if max_total_tokens is not None:
+                remaining_tokens = max_total_tokens - total_step_tokens
+                if remaining_tokens <= 0:
+                    stop_reason = "max_total_tokens"
+                    break
+                step_token_budget = min(max_tokens_per_step, remaining_tokens)
+            else:
+                step_token_budget = max_tokens_per_step
+
             prompt = small_model.render_prompt(q["question"], history)
             probe = small_model.probe_first_token(prompt)
             ctx = SignalContext(
@@ -194,12 +242,18 @@ def collect_with_agreement(
 
             step_out = small_model.generate_step(
                 prompt,
+                max_tokens=step_token_budget,
                 step_delimiters=step_delimiters,
             )
-            per_step.append((step_idx, score))
+            per_step.append((step_idx, score, step_out.n_tokens))
+            total_step_tokens += step_out.n_tokens
             committed_text = step_out.text + (step_delimiters[0] if not step_out.finished else "")
             history += committed_text
             last_step_extra = dict(step_out.extra)
+            if step_out.n_tokens == 0 and not step_out.text and not step_out.finished:
+                stop_reason = "empty_step"
+                last_step_extra["stop_reason"] = stop_reason
+                break
             if stop_on_repetition:
                 stop_reason = update_strict_step_repetition(
                     repetition,
@@ -210,9 +264,19 @@ def collect_with_agreement(
                     last_step_extra["stop_reason"] = stop_reason
                     break
             if step_out.finished:
-                stop_reason = str(step_out.extra.get("finish_reason") or "finished")
+                stop_reason = (
+                    "final_answer"
+                    if extract_boxed_answer(history) is not None
+                    else str(step_out.extra.get("finish_reason") or "finished")
+                )
                 break
+            if max_total_tokens is not None and total_step_tokens >= max_total_tokens:
+                stop_reason = "max_total_tokens"
+                break
+            step_idx += 1
 
+        if stop_reason is None and max_steps is not None and len(per_step) >= max_steps:
+            stop_reason = "max_steps"
         large_out = large_model.generate_full(large_model.render_prompt(q["question"], ""))
         large_reference = _extract_reference_answer(large_out.text)
         small_correct = int(check_answer(history, large_reference))
@@ -224,6 +288,12 @@ def collect_with_agreement(
                     "question_preview": _question_preview(q),
                     "question_meta": dict(q.get("meta", {})),
                     "n_steps": len(per_step),
+                    "max_steps": max_steps,
+                    "max_tokens_per_step": max_tokens_per_step,
+                    "max_total_tokens": max_total_tokens,
+                    "small_output_chars": len(history),
+                    "small_output_tokens": total_step_tokens,
+                    "small_has_boxed": extract_boxed_answer(history) is not None,
                     "small_correct": small_correct,
                     "large_reference": large_reference,
                     "small_extracted": extract_answer(history),
@@ -236,7 +306,7 @@ def collect_with_agreement(
                 }
             )
 
-        for step_idx, score in per_step:
+        for step_idx, score, _ in per_step:
             out.append(
                 CalibrationExample(
                     question_id=q["id"],

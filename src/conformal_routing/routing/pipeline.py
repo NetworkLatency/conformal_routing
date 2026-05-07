@@ -86,8 +86,9 @@ class RoutingTrace:
 
 @dataclass
 class PipelineConfig:
-    max_steps: int = 64
+    max_steps: int | None = 64
     max_tokens_per_step: int = 1024
+    max_total_tokens: int | None = None
     step_delimiters: tuple[str, ...] = ("\n\n",)
     temperature_small: float = 0.0
     temperature_large: float = 0.0
@@ -122,8 +123,19 @@ class RoutingPipeline:
         trace = RoutingTrace(question_id=question_id, question=question, final_answer_text="")
         n_large = 0
         repetition = RepetitionState()
+        total_output_tokens = 0
+        step_idx = 0
 
-        for step_idx in range(self.cfg.max_steps):
+        while self.cfg.max_steps is None or step_idx < self.cfg.max_steps:
+            if self.cfg.max_total_tokens is not None:
+                remaining_tokens = self.cfg.max_total_tokens - total_output_tokens
+                if remaining_tokens <= 0:
+                    trace.stop_reason = "max_total_tokens"
+                    break
+                step_token_budget = min(self.cfg.max_tokens_per_step, remaining_tokens)
+            else:
+                step_token_budget = self.cfg.max_tokens_per_step
+
             t0 = time.time()
             small_prompt = self.small.render_prompt(question, history)
 
@@ -149,7 +161,7 @@ class RoutingPipeline:
                 prefix_ids = [int(np.argmax(probe.logits))] if self.cfg.reuse_probe_first_token else None
                 step_out = self.small.generate_step(
                     small_prompt,
-                    max_tokens=self.cfg.max_tokens_per_step,
+                    max_tokens=step_token_budget,
                     temperature=self.cfg.temperature_small,
                     step_delimiters=self.cfg.step_delimiters,
                     prefix_token_ids=prefix_ids,
@@ -159,7 +171,7 @@ class RoutingPipeline:
                 large_prompt = self.large.render_prompt(question, history)
                 step_out = self.large.generate_step(
                     large_prompt,
-                    max_tokens=self.cfg.max_tokens_per_step,
+                    max_tokens=step_token_budget,
                     temperature=self.cfg.temperature_large,
                     step_delimiters=self.cfg.step_delimiters,
                 )
@@ -180,7 +192,11 @@ class RoutingPipeline:
                 self.cfg.step_delimiters[0] if not step_out.finished else ""
             )
             history += committed_text
+            total_output_tokens += step_out.n_tokens
             repetition_reason = None
+            empty_step_reason = None
+            if step_out.n_tokens == 0 and not step_out.text and not step_out.finished:
+                empty_step_reason = "empty_step"
             if self.cfg.stop_on_repetition:
                 repetition_reason = update_strict_step_repetition(
                     repetition,
@@ -204,6 +220,11 @@ class RoutingPipeline:
             trace.total_flops += flops_used
             trace.total_latency_s += latency
 
+            if empty_step_reason is not None:
+                trace.stop_reason = empty_step_reason
+                trace.steps[-1].finished = True
+                trace.steps[-1].stop_reason = empty_step_reason
+                break
             if repetition_reason is not None:
                 trace.stop_reason = repetition_reason
                 break
@@ -213,10 +234,19 @@ class RoutingPipeline:
             if self._has_final_answer(history):
                 trace.stop_reason = "final_answer"
                 break
+            if (
+                self.cfg.max_total_tokens is not None
+                and total_output_tokens >= self.cfg.max_total_tokens
+            ):
+                trace.stop_reason = "max_total_tokens"
+                trace.steps[-1].finished = True
+                trace.steps[-1].stop_reason = "max_total_tokens"
+                break
+            step_idx += 1
 
         trace.final_answer_text = history
         if trace.stop_reason is None:
-            trace.stop_reason = "max_steps"
+            trace.stop_reason = "max_steps" if self.cfg.max_steps is not None else "stopped"
         if trace.steps:
             trace.intervention_rate = n_large / len(trace.steps)
         return trace
