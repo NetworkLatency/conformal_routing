@@ -1,7 +1,7 @@
-from conformal_routing.signals.base import SignalContext, SignalExtractor
-from conformal_routing.signals.h_init import HInitSignal
-from conformal_routing.signals.logit_confidence import LogitConfidenceSignal
-from conformal_routing.signals.self_consistency import SelfConsistencySignal
+from src.conformal_routing.signals.base import SignalContext, SignalExtractor
+from src.conformal_routing.signals.h_init import HInitSignal
+from src.conformal_routing.signals.logit_confidence import LogitConfidenceSignal
+from src.conformal_routing.signals.self_consistency import SelfConsistencySignal
 
 SIGNAL_REGISTRY: dict[str, type[SignalExtractor]] = {
     "h_init": HInitSignal,

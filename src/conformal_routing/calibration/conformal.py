@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
 
 
 class ConformalCalibrator(Calibrator):

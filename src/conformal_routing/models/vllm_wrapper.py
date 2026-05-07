@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from conformal_routing.models.base import (
+from src.conformal_routing.models.base import (
     FirstTokenProbe,
     ModelWrapper,
     StepOutput,
@@ -85,11 +85,22 @@ class VLLMWrapper(ModelWrapper):
             "enable_prefix_caching": enable_prefix_caching,
             "seed": seed,
             "trust_remote_code": trust_remote_code,
+            "max_logprobs": max(1, int(probe_logprobs)),
         }
         if download_dir is not None:
             llm_kwargs["download_dir"] = download_dir
 
-        self.llm = LLM(**llm_kwargs)
+        try:
+            self.llm = LLM(**llm_kwargs)
+        except TypeError as exc:
+            if "max_logprobs" not in str(exc):
+                raise
+            LOG.warning(
+                "Installed vLLM does not accept max_logprobs in LLM(...); "
+                "falling back to engine defaults."
+            )
+            llm_kwargs.pop("max_logprobs", None)
+            self.llm = LLM(**llm_kwargs)
         self.tokenizer = self.llm.get_tokenizer()
         self._set_chat_template(chat_template, chat_template_path)
         self._SamplingParams = SamplingParams

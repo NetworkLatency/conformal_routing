@@ -20,7 +20,7 @@ step_delimiters: ["\n\n"]
 calibration_strategy: outcome_propagation
 
 dataset_paths:
-  math500: data/math500.jsonl
+  math500: /home/lhyang/Documents/code/reasoning_boundary/data/math500/MATH500.json
 
 vllm_defaults:
   dtype: bfloat16
@@ -39,20 +39,20 @@ vllm_defaults:
 
 small_model:
   backend: vllm
-  model_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
-  tokenizer_name_or_path: models/DeepSeek-R1-Distill-Qwen-1.5B
+  model_name_or_path: /home/lhyang/Documents/code/reasoning_boundary/models/deepseek-aiDeepSeek-R1-Distill-Qwen-1.5B
+  tokenizer_name_or_path: null
   n_params_billion: 1.5
   gpu_memory_utilization: 0.30
 
 large_model:
   backend: openai_compatible
-  api_base_url: http://127.0.0.1:8000
+  api_base_url: http://192.168.3.13:8080/v1
   api_key: EMPTY
   api_model: Qwen3-14B
   model_name_or_path: Qwen3-14B
-  tokenizer_name_or_path: models/Qwen3-14B
+  tokenizer_name_or_path: /home/lhyang/Documents/code/reasoning_boundary/models/qwen3-14B/
   n_params_billion: 14.0
-  timeout_s: 600
+  timeout_s: 12000
 
 signals:
   - h_init
@@ -77,7 +77,7 @@ signal:
 calibrators:
   - name: conformal
     id: conformal_alpha010
-    kwargs: {alpha: 0.10}
+    kwargs: { alpha: 0.10 }
 
 pipeline:
   max_steps: 16

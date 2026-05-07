@@ -1,4 +1,4 @@
-from conformal_routing.routing.pipeline import (
+from src.conformal_routing.routing.pipeline import (
     PipelineConfig,
     RoutingPipeline,
     RoutingTrace,

@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.mixture import GaussianMixture
 
-from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
 
 
 class GMMCalibrator(Calibrator):

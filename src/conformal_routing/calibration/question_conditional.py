@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.cluster import KMeans
 
-from conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
+from src.conformal_routing.calibration.base import Calibrator, FitInputs, RouteDecision
 
 
 class QuestionConditionalCalibrator(Calibrator):

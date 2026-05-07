@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from conformal_routing.models.base import ModelWrapper
+from src.conformal_routing.models.base import ModelWrapper
 
 
 @dataclass

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from conformal_routing.routing.pipeline import RoutingTrace
+from src.conformal_routing.routing.pipeline import RoutingTrace
 
 
 @dataclass

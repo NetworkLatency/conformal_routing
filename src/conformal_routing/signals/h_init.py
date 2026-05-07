@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from conformal_routing.signals.base import SignalContext, SignalExtractor
+from src.conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 class HInitSignal(SignalExtractor):

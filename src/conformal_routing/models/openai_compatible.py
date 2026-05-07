@@ -12,7 +12,7 @@ from typing import Any, Optional
 import numpy as np
 from transformers import AutoTokenizer
 
-from conformal_routing.models.base import FirstTokenProbe, ModelWrapper, StepOutput
+from src.conformal_routing.models.base import FirstTokenProbe, ModelWrapper, StepOutput
 
 
 FINAL_ANSWER_MARKERS = ("\\boxed{", "</think>")

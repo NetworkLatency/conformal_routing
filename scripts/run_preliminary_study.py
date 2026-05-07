@@ -30,14 +30,14 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
-from conformal_routing.calibration.collect import (
+from src.conformal_routing.calibration.collect import (
     collect_with_outcome_propagation,
     to_fit_inputs,
 )
-from conformal_routing.config_paths import configured_output_dir, load_experiment_config
-from conformal_routing.data.loaders import load_split
-from conformal_routing.models import build_model
-from conformal_routing.signals import build_signal
+from src.conformal_routing.config_paths import configured_output_dir, load_experiment_config
+from src.conformal_routing.data.loaders import load_split
+from src.conformal_routing.models import build_model
+from src.conformal_routing.signals import build_signal
 
 
 def parse_args():
@@ -67,7 +67,7 @@ def main():
     print(f"[preliminary] loaded {len(questions)} questions from {cfg['benchmark']}")
 
     # --- answer checker (math-verify or simple regex; user fills) ---
-    from conformal_routing.eval.answer_check import check_answer  # see file
+    from src.conformal_routing.eval.answer_check import check_answer  # see file
     answer_checker = check_answer
 
     # --- iterate over signals ---

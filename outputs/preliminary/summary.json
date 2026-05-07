@@ -1,0 +1,29 @@
+{
+  "h_init": {
+    "n_examples": 160,
+    "n_pos": 0,
+    "spearman": NaN,
+    "pearson": NaN,
+    "auc": NaN,
+    "score_mean": -1.6957345011003782,
+    "score_std": 0.6980306721150698
+  },
+  "logit_confidence": {
+    "n_examples": 160,
+    "n_pos": 0,
+    "spearman": NaN,
+    "pearson": NaN,
+    "auc": NaN,
+    "score_mean": 0.45998199097812176,
+    "score_std": 0.23580359915958923
+  },
+  "self_consistency": {
+    "n_examples": 160,
+    "n_pos": 0,
+    "spearman": NaN,
+    "pearson": NaN,
+    "auc": NaN,
+    "score_mean": 0.6890625,
+    "score_std": 0.20869174898339896
+  }
+}

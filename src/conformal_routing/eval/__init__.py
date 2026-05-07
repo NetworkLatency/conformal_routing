@@ -1,4 +1,4 @@
-from conformal_routing.eval.metrics import (
+from src.conformal_routing.eval.metrics import (
     AggregateMetrics,
     aggregate,
     pareto_frontier,

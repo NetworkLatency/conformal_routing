@@ -33,15 +33,15 @@ from typing import Callable, Iterable
 import numpy as np
 from tqdm import tqdm
 
-from conformal_routing.calibration.base import FitInputs
-from conformal_routing.eval.answer_check import (
+from src.conformal_routing.calibration.base import FitInputs
+from src.conformal_routing.eval.answer_check import (
     check_answer,
     extract_boxed_answer,
     extract_choice_answer,
     extract_final_number,
 )
-from conformal_routing.models.base import ModelWrapper
-from conformal_routing.signals.base import SignalContext, SignalExtractor
+from src.conformal_routing.models.base import ModelWrapper
+from src.conformal_routing.signals.base import SignalContext, SignalExtractor
 
 
 @dataclass
